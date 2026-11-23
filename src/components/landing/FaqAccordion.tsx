@@ -18,10 +18,11 @@ const FAQ_ITEMS: readonly FaqItem[] = [
       "Public issue cards display your ward, street landmark, and verified repair photos — never your personal email or phone number. You can also opt out of public citizen aliases anytime from your profile while still earning CivicPoints.",
   },
   {
-    id: "civicpoints-rewards",
-    question: "How do CivicPoints and Bengaluru CivicPerks rewards work?",
+    id: "state-civic-honors",
+    question:
+      "How do the Chief Minister's Annual Civic Honors and Digital Certificates work?",
     answer:
-      "Residents earn CivicPoints when reports are verified and when contractor fixes pass AI verification. Points carry no cash value and are redeemable directly at partner merchants like Third Wave Coffee, Cult.fit, and Zepto using a fraud-protected 15-minute counter verification timer and QR code.",
+      "Citizens earn +50 Civic Merit Points for every AI-verified Before-vs-After infrastructure repair. Every 5 verified fixes automatically unlock an official Bengaluru Urban Digital Civic Merit Certificate with a unique verification ID ready for LinkedIn. At year-end (31st December), the Top 5 Bengaluru citizens are felicitated by the Hon'ble Chief Minister at the Annual Urban Governance Summit with a State Civic Medal, innovation grant, and 1-year Honorary Civic Warden designation.",
   },
   {
     id: "contractor-audits",

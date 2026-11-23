@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     template: "%s · CivicSnap",
   },
   description:
-    "Snap. Report. Track. Turn broken roads into verified fixes across Bengaluru wards with Hinglish voice reporting, AI engineering material audits, and CivicPerks rewards.",
+    "Snap. Report. Track. Turn broken roads into verified fixes across Bengaluru wards with Hinglish voice reporting, AI engineering material audits, and Official State Civic Honors.",
   openGraph: {
     title: "CivicSnap — Snap. Report. Track.",
     description:

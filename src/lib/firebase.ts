@@ -5,6 +5,7 @@ import {
   getDocFromServer,
   getFirestore,
   initializeFirestore,
+  setLogLevel,
   type Firestore,
 } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
@@ -27,34 +28,45 @@ const envDatabaseId = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID?.trim() || ""
 const fileDatabaseId = fileConfig.firestoreDatabaseId?.trim() || "";
 
 /**
- * Resolves Firebase configuration from NEXT_PUBLIC_FIREBASE_* environment
- * variables and firebase-applet-config.json, always preserving the provisioned
- * named Firestore database ID when present.
+ * Resolves Firebase configuration preferring the provisioned
+ * firebase-applet-config.json (when valid) and falling back to
+ * NEXT_PUBLIC_FIREBASE_* environment variables, always preserving the
+ * named Firestore database ID.
  */
+const hasFileProject =
+  Boolean(fileConfig.projectId?.trim()) &&
+  fileConfig.projectId?.trim() !== "remixed-project-id";
+
 const resolvedConfig: FirebaseConfigShape = {
   apiKey:
+    (hasFileProject ? fileConfig.apiKey?.trim() : "") ||
     process.env.NEXT_PUBLIC_FIREBASE_API_KEY?.trim() ||
     fileConfig.apiKey ||
     "",
   authDomain:
+    (hasFileProject ? fileConfig.authDomain?.trim() : "") ||
     process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN?.trim() ||
     fileConfig.authDomain ||
     "",
   projectId:
+    (hasFileProject ? fileConfig.projectId?.trim() : "") ||
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ||
     fileConfig.projectId ||
     "",
   storageBucket:
+    (hasFileProject ? fileConfig.storageBucket?.trim() : "") ||
     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim() ||
     fileConfig.storageBucket ||
     "",
   messagingSenderId:
+    (hasFileProject ? fileConfig.messagingSenderId?.trim() : "") ||
     process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID?.trim() ||
     fileConfig.messagingSenderId ||
     "",
   appId:
-    fileConfig.appId?.trim() ||
+    (hasFileProject ? fileConfig.appId?.trim() : "") ||
     process.env.NEXT_PUBLIC_FIREBASE_APP_ID?.trim() ||
+    fileConfig.appId ||
     "",
   firestoreDatabaseId:
     fileDatabaseId ||
@@ -82,16 +94,25 @@ let storageInstance: FirebaseStorage | null = null;
 
 if (isFirebaseConfigured) {
   appInstance = getApps().length > 0 ? getApp() : initializeApp(resolvedConfig);
+  if (typeof window !== "undefined") {
+    // Silence internal SDK OnlineStateTracker 10s offline console.error chatter
+    // on flaky mobile/iframe networks; real permission and operation errors are
+    // still explicitly logged and thrown via handleFirestoreError().
+    setLogLevel("silent");
+  }
+  const firestoreSettings = {
+    experimentalAutoDetectLongPolling: true,
+    experimentalLongPollingOptions: { timeoutSeconds: 8 },
+    ignoreUndefinedProperties: true,
+  };
   try {
     dbInstance = resolvedConfig.firestoreDatabaseId
       ? initializeFirestore(
           appInstance,
-          { experimentalAutoDetectLongPolling: true },
+          firestoreSettings,
           resolvedConfig.firestoreDatabaseId
         )
-      : initializeFirestore(appInstance, {
-          experimentalAutoDetectLongPolling: true,
-        });
+      : initializeFirestore(appInstance, firestoreSettings);
   } catch {
     dbInstance = resolvedConfig.firestoreDatabaseId
       ? getFirestore(appInstance, resolvedConfig.firestoreDatabaseId)
@@ -161,14 +182,27 @@ export function handleFirestoreError(
     operationType,
     path,
   };
-  console.error("Firestore Error: ", JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  const serialized = JSON.stringify(errInfo);
+  const lowerMessage = errInfo.error.toLowerCase();
+  const isTransientOffline =
+    lowerMessage.includes("client is offline") ||
+    lowerMessage.includes("could not reach cloud firestore backend") ||
+    lowerMessage.includes("unavailable") ||
+    lowerMessage.includes("network");
+
+  if (isTransientOffline) {
+    console.warn("Firestore offline fallback: ", serialized);
+  } else {
+    console.error("Firestore Error: ", serialized);
+  }
+  throw new Error(serialized);
 }
 
 let connectionTested = false;
 
 export async function testFirestoreConnection(): Promise<void> {
   if (typeof window === "undefined" || !db || connectionTested) return;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
   connectionTested = true;
   try {
     await getDocFromServer(doc(db, "test", "connection"));
@@ -177,7 +211,12 @@ export async function testFirestoreConnection(): Promise<void> {
       error instanceof Error &&
       error.message.includes("the client is offline")
     ) {
-      console.error("Please check your Firebase configuration.");
+      // Log as warning rather than console.error so transient preview network
+      // restrictions never trigger a blocking runtime error overlay while
+      // pre-loaded Bengaluru pilot views continue working seamlessly.
+      console.warn(
+        "CivicSnap Cloud Sync is temporarily offline. Local pilot data remains available until connectivity resumes."
+      );
     }
   }
 }

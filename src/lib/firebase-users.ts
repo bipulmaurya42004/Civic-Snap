@@ -1,12 +1,8 @@
 import type { User } from "firebase/auth";
 import {
-  collection,
   doc,
   getDoc,
-  getDocs,
-  query,
   serverTimestamp,
-  where,
   writeBatch,
   type Timestamp,
 } from "firebase/firestore";
@@ -15,11 +11,7 @@ import {
   handleFirestoreError,
   OperationType,
 } from "@/lib/firebase";
-import {
-  generateUniqueCouponCode,
-  isAuthorizedAdminEmail,
-} from "@/lib/civic-logic";
-import type { RewardItem, RewardRedemptionRecord } from "@/types/civic";
+import { isAuthorizedAdminEmail } from "@/lib/civic-logic";
 
 export const ALIAS_MIN_LENGTH = 2;
 export const ALIAS_MAX_LENGTH = 40;
@@ -240,141 +232,3 @@ export async function checkIsProjectAdmin(user: User): Promise<boolean> {
   }
 }
 
-/**
- * Atomically deducts CivicPoints from `users/{uid}` (and syncs `public_profiles/{uid}`
- * if present) and writes an immutable merchant voucher under `users/{uid}/redemptions/{id}`.
- */
-export async function redeemCivicReward(
-  user: User,
-  reward: RewardItem
-): Promise<{
-  redemption: RewardRedemptionRecord;
-  remainingPoints: number;
-}> {
-  if (!db) {
-    throw new Error("Firebase Firestore is not configured in this environment.");
-  }
-
-  const userDocRef = doc(db, "users", user.uid);
-  const publicDocRef = doc(db, "public_profiles", user.uid);
-  const path = `users/${user.uid}/redemptions`;
-
-  try {
-    const [userSnap, publicSnap] = await Promise.all([
-      getDoc(userDocRef),
-      getDoc(publicDocRef),
-    ]);
-
-    if (!userSnap.exists()) {
-      throw new Error(
-        "Your Firestore profile is not initialized yet. Please refresh or sign in with a verified email."
-      );
-    }
-
-    const currentPoints = toSafeNonNegativeInt(userSnap.data().civicPoints);
-    if (currentPoints < reward.pointsCost) {
-      throw new Error(
-        `You need ${reward.pointsCost - currentPoints} more CivicPoints to redeem "${reward.title}".`
-      );
-    }
-
-    const nextPoints = currentPoints - reward.pointsCost;
-    const ts = Date.now().toString(36).toUpperCase();
-    const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-    const redemptionId = `RDM-${ts}-${rand}`;
-    const couponCode = generateUniqueCouponCode(reward.codePrefix);
-    const expiresAtMs =
-      Date.now() + reward.validityMinutes * 60 * 1000;
-    const now = serverTimestamp();
-
-    const batch = writeBatch(db);
-    batch.update(userDocRef, {
-      civicPoints: nextPoints,
-      updatedAt: now,
-    });
-
-    if (publicSnap.exists()) {
-      const pubPoints = toSafeNonNegativeInt(publicSnap.data().civicPoints);
-      if (pubPoints >= reward.pointsCost) {
-        batch.update(publicDocRef, {
-          civicPoints: pubPoints - reward.pointsCost,
-          updatedAt: now,
-        });
-      }
-    }
-
-    batch.set(doc(db, "users", user.uid, "redemptions", redemptionId), {
-      id: redemptionId,
-      userId: user.uid,
-      rewardId: reward.id,
-      rewardTitle: reward.title,
-      pointsSpent: reward.pointsCost,
-      terms: reward.terms,
-      couponCode,
-      expiresAtMs,
-      createdAt: now,
-    });
-
-    await batch.commit();
-
-    return {
-      redemption: {
-        id: redemptionId,
-        userId: user.uid,
-        rewardId: reward.id,
-        rewardTitle: reward.title,
-        pointsSpent: reward.pointsCost,
-        terms: reward.terms,
-        couponCode,
-        createdAtIso: new Date().toISOString(),
-        expiresAtMs,
-      },
-      remainingPoints: nextPoints,
-    };
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      (error.message.includes("more CivicPoints") ||
-        error.message.includes("Firestore profile"))
-    ) {
-      throw error;
-    }
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
-}
-
-export async function fetchMyRewardRedemptions(
-  uid: string
-): Promise<RewardRedemptionRecord[]> {
-  if (!db) return [];
-  const path = `users/${uid}/redemptions`;
-  try {
-    const q = query(
-      collection(db, "users", uid, "redemptions"),
-      where("userId", "==", uid)
-    );
-    const snap = await getDocs(q);
-    const records: RewardRedemptionRecord[] = snap.docs.map((docSnap) => {
-      const data = docSnap.data();
-      return {
-        id: String(data.id ?? docSnap.id),
-        userId: String(data.userId ?? uid),
-        rewardId: (data.rewardId as RewardItem["id"]) ?? "gym-15-off",
-        rewardTitle: String(data.rewardTitle ?? "Merchant Reward"),
-        pointsSpent: toSafeNonNegativeInt(data.pointsSpent),
-        terms: String(data.terms ?? ""),
-        couponCode: String(data.couponCode ?? ""),
-        createdAtIso: timestampToIso(data.createdAt) ?? new Date().toISOString(),
-        expiresAtMs:
-          typeof data.expiresAtMs === "number" ? data.expiresAtMs : 0,
-      };
-    });
-
-    return records.sort(
-      (a, b) =>
-        new Date(b.createdAtIso).getTime() - new Date(a.createdAtIso).getTime()
-    );
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, path);
-  }
-}

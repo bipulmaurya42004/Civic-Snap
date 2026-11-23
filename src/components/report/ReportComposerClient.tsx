@@ -1207,7 +1207,7 @@ export function ReportComposerClient() {
             className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-all hover:bg-slate-100"
           >
             <Coins size={15} aria-hidden="true" className="text-amber-600" />
-            <span>Open Rewards Store</span>
+            <span>View Civic Honors</span>
           </Link>
           <button
             type="button"

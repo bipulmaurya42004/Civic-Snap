@@ -1,30 +1,31 @@
 import type { Metadata } from "next";
-import { RewardsStoreWorkspace } from "@/components/rewards/RewardsStoreWorkspace";
+import { CivicHonorsWorkspace } from "@/components/honors/CivicHonorsWorkspace";
 
 export const metadata: Metadata = {
-  title: "CivicPerks Rewards Store",
+  title: "Civic Honors & Achievements",
   description:
-    "Redeem your CivicPoints for Bengaluru partner vouchers at Third Wave Coffee, Cult.fit, and Zepto with fraud-protected 15-minute counter verification timers.",
+    "Track your journey toward the Chief Minister's Annual Civic Champions Award, unlock automated Digital Civic Merit Certificates every 5 verified fixes, and earn State & National civic badges.",
 };
 
-export default function RewardsPage() {
+export default function CivicHonorsPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="max-w-3xl">
         <p className="text-xs font-semibold tracking-wide text-blue-600">
-          Bengaluru Pilot • CivicPerks Rewards Store
+          Bengaluru Pilot • Official State Civic Honors &amp; Recognition
         </p>
         <h1 className="mt-2 font-[var(--font-heading)] text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-          Redeem CivicPoints at Bengaluru partners
+          Civic Honors &amp; Achievements
         </h1>
         <p className="mt-2.5 text-sm leading-6 text-slate-600 sm:text-base">
-          Turn verified civic reports into neighborhood perks. Redeeming opens a
-          fraud-protected 15-minute live merchant verification timer and QR code
-          for instant counter redemption.
+          Track your journey toward the Chief Minister&apos;s Annual Honors.
+          Every 5 AI-verified infrastructure fixes unlock an official digital
+          Bengaluru Urban Civic Merit Certificate and advance your state badge
+          rank.
         </p>
       </div>
 
-      <RewardsStoreWorkspace />
+      <CivicHonorsWorkspace />
     </div>
   );
 }

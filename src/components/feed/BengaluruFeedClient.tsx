@@ -14,6 +14,7 @@ import {
   Siren,
   Sparkles,
   ThumbsUp,
+  Trophy,
   Wrench,
   X,
 } from "lucide-react";
@@ -521,6 +522,19 @@ export function BengaluruFeedClient() {
                         Impact {issue.socialImpactScore}/100
                       </span>
                     </div>
+
+                    {issue.status === "resolved" && (
+                      <p className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                        <Trophy
+                          size={13}
+                          className="shrink-0 text-amber-600"
+                          aria-hidden="true"
+                        />
+                        <span>
+                          +50 Merit Points awarded towards Annual CM Standings
+                        </span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Card Action Bar: Google Maps + View AI Proof (Resolved) + Upvote */}
@@ -734,6 +748,17 @@ export function BengaluruFeedClient() {
                     <p className="mt-2.5 text-xs leading-5 text-slate-700 sm:text-sm">
                       {proofModalIssue.aiVerificationSummary ||
                         "CivicSnap Vision AI confirmed the same road corridor and verified that the reported civic hazard has been fully repaired."}
+                    </p>
+
+                    <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                      <Trophy
+                        size={13}
+                        className="text-amber-600"
+                        aria-hidden="true"
+                      />
+                      <span>
+                        +50 Merit Points awarded towards Annual CM Standings
+                      </span>
                     </p>
 
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-emerald-200/60 pt-3.5 text-xs">

@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowRight,
+  Award,
   Camera,
   CheckCircle2,
-  Gift,
+  Clock,
+  ExternalLink,
+  FileCheck2,
+  Landmark,
   Loader2,
-  MapPin,
   Mic,
   ShieldCheck,
   Siren,
@@ -19,103 +22,48 @@ import {
 } from "lucide-react";
 import { SafeCivicImage } from "@/components/ui/SafeCivicImage";
 import { FaqAccordion } from "@/components/landing/FaqAccordion";
+import { CertificateModal } from "@/components/CertificateModal";
 import {
   HoverCard,
   PageTransition,
   StaggerReveal,
 } from "@/components/ui/MotionPrimitives";
-
-const IMPACT_METRICS = [
-  {
-    value: "2,480+",
-    label: "Verified Fixes",
-    detail: "Completed across Bengaluru pilot wards",
-  },
-  {
-    value: "₹18.4L",
-    label: "Contractor Waste Saved",
-    detail: "Flagged via AI material & photo audits",
-  },
-  {
-    value: "94.8%",
-    label: "Vision Match Accuracy",
-    detail: "Before-vs-After repair verification",
-  },
-  {
-    value: "18 hrs",
-    label: "Top Ward Avg Fix",
-    detail: "Led by #1 Indiranagar Ward Wars",
-  },
-] as const;
+import { generateQrMatrix } from "@/lib/bengaluru-feed-data";
+import {
+  ANNUAL_CM_SEASON_CLOSE_LABEL,
+  ANNUAL_CM_SEASON_YEAR,
+  CM_ANNUAL_AWARD_PERKS,
+  formatCertificateIssueDate,
+  generateCertificateId,
+} from "@/lib/civic-honors";
+import type { CivicCertificateData } from "@/types/civic";
 
 const HOW_IT_WORKS_STEPS = [
   {
     step: "01",
     title: "Snap & Speak",
     description:
-      "Upload a street photo (<100KB auto-compress), auto-detect your Bengaluru ward via GPS, and describe the issue in Hindi or Hinglish in 10 seconds.",
+      "CivicSnap AI captures your live GPS ward and converts natural Hindi or Hinglish speech into a structured English civic report in seconds.",
     icon: Camera,
   },
   {
     step: "02",
-    title: "AI Engineering Audit",
+    title: "AI Material Audit",
     description:
-      "CivicSnap Vision AI estimates repair materials (kg of asphalt, LED fixtures, crew hours), assigns a Social Impact Score, and flags Hospital/School High Priority Zones.",
+      "Prevents contractor overbilling by estimating exact repair materials (asphalt tonnage, LED fixtures, labor hours) and flagging Hospital/School priority zones.",
     icon: Wrench,
   },
   {
     step: "03",
-    title: "Verified Fix & Rewards",
+    title: "Verified Fix & State Honors",
     description:
-      "When contractors upload an After photo, AI verifies the surface repair before closing the ticket — crediting +50 CivicPoints redeemable at Bengaluru cafés & fitness studios.",
-    icon: Gift,
+      "CivicSnap Vision AI verifies the contractor's After photo, logs +50 Civic Merit Points toward Annual CM Standings, and automatically unlocks Digital Merit Certificates every 5 fixes.",
+    icon: Award,
   },
 ] as const;
 
-const BENTO_FEATURES = [
-  {
-    title: "AI Material Estimator",
-    subtitle: "Civil Engineering Audits",
-    description:
-      "Automatically computes required asphalt tonnage, paint liters, crew hours, and 30-day economic cost of delay from a single citizen photo so contractor bills stay honest.",
-    metric: "~140 kg Asphalt · ₹3,200 Est.",
-    icon: Wrench,
-    href: "/report",
-    cta: "Try Photo Audit",
-  },
-  {
-    title: "Hinglish Voice-to-Report",
-    subtitle: "10-Second Accessibility",
-    description:
-      "Speak naturally in Hindi or Hinglish — \"Bhai yahan main road pe 2ft ka gaddha hai\" — and CivicSnap structures a clean English title, category, and report automatically.",
-    metric: "Hindi / Hinglish → English",
-    icon: Mic,
-    href: "/report",
-    cta: "Try Voice Recorder",
-  },
-  {
-    title: "Anti-Fraud Fix Verification",
-    subtitle: "Before-vs-After Accountability",
-    description:
-      "Contractors cannot silently mark tickets Resolved. CivicSnap Vision AI compares the original issue photo against proof-of-fix images and flags duplicate or incomplete patches.",
-    metric: "94.8% Match Confidence",
-    icon: ShieldCheck,
-    href: "/admin?mode=judge",
-    cta: "Open Judge Demo",
-  },
-  {
-    title: "Ward Wars & CivicPerks",
-    subtitle: "Colony-Level Incentives",
-    description:
-      "Indiranagar, HSR Layout, and Koramangala compete on live resolution rates and fix speed while residents redeem CivicPoints at Third Wave Coffee, Cult.fit, and Zepto.",
-    metric: "7 Active Bengaluru Wards",
-    icon: Trophy,
-    href: "/ward-wars",
-    cta: "View Ward Standings",
-  },
-] as const;
-
-const HINGLISH_DEMO_PHRASE = "Bhai yahan main road pe 2ft ka gaddha hai";
+const HINGLISH_DEMO_PHRASE = "Bhai Chinmaya Hospital road pe deep pothole hai";
+const SAMPLE_CERT_ID = generateCertificateId("Aarav Sharma", 1, ANNUAL_CM_SEASON_YEAR);
 
 export function HomeLandingClient() {
   const [auditView, setAuditView] = useState<"before" | "after">("after");
@@ -125,6 +73,24 @@ export function HomeLandingClient() {
     categoryDisplay: string;
     description: string;
   } | null>(null);
+  const [previewCertificate, setPreviewCertificate] =
+    useState<CivicCertificateData | null>(null);
+
+  const sampleQrMatrix = useMemo(() => generateQrMatrix(SAMPLE_CERT_ID), []);
+
+  const handleOpenSampleCertificate = () => {
+    setPreviewCertificate({
+      recipientName: "Aarav Sharma",
+      ward: "Ward 82 · Indiranagar",
+      verifiedFixes: 5,
+      milestoneLevel: 1,
+      milestoneTitle:
+        "Official Civic Merit Certificate (Level 1: 5 Verified Fixes)",
+      certificateId: SAMPLE_CERT_ID,
+      issuedDate: formatCertificateIssueDate(),
+      meritPoints: 750,
+    });
+  };
 
   const handleRunHinglishDemo = async () => {
     setVoiceDemoBusy(true);
@@ -150,18 +116,18 @@ export function HomeLandingClient() {
         });
       } else {
         setVoiceDemoResult({
-          title: "Deep 2ft Pothole on Main Road",
+          title: "Deep Pothole near Chinmaya Mission Hospital Road",
           categoryDisplay: "Pothole",
           description:
-            "A 2-foot pothole on the main road poses a severe safety risk to two-wheelers and daily commuters. Immediate asphalt patching requested.",
+            "A deep road pothole on the Chinmaya Mission Hospital approach road poses an acute hazard to ambulances and two-wheelers. Immediate hot-mix asphalt patching requested.",
         });
       }
     } catch {
       setVoiceDemoResult({
-        title: "Deep 2ft Pothole on Main Road",
+        title: "Deep Pothole near Chinmaya Mission Hospital Road",
         categoryDisplay: "Pothole",
         description:
-          "A 2-foot pothole on the main road poses a severe safety risk to two-wheelers and daily commuters. Immediate asphalt patching requested.",
+          "A deep road pothole on the Chinmaya Mission Hospital approach road poses an acute hazard to ambulances and two-wheelers. Immediate hot-mix asphalt patching requested.",
       });
     } finally {
       setVoiceDemoBusy(false);
@@ -175,10 +141,17 @@ export function HomeLandingClient() {
         <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8 lg:py-20">
           <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-12">
             {/* Left Copy Column */}
-            <div className="lg:col-span-6 lg:pt-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
-                <MapPin size={13} aria-hidden="true" className="text-rose-600" />
-                <span>Live in Bengaluru: Indiranagar, HSR &amp; Koramangala</span>
+            <div className="lg:col-span-6 lg:pt-1">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/80 bg-amber-50/90 px-3.5 py-1 text-xs font-semibold text-amber-900">
+                <Landmark
+                  size={13}
+                  aria-hidden="true"
+                  className="text-amber-700"
+                />
+                <span>
+                  Bengaluru Pilot • Annual State Urban Governance Honors{" "}
+                  {ANNUAL_CM_SEASON_YEAR}
+                </span>
               </div>
 
               <h1
@@ -191,13 +164,15 @@ export function HomeLandingClient() {
                 Turn Broken Roads into Verified Fixes.
               </h1>
 
-              <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
+              <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-[17px] sm:leading-8">
                 <strong className="font-semibold text-slate-900">
                   Sirf photo nahi, follow-up bhi.
                 </strong>{" "}
-                Report issues in 10 seconds with Hinglish voice, track real
-                contractor repair materials, and earn café discounts for your
-                ward.
+                Report hazards in seconds with Hinglish voice, audit repair
+                materials with AI, and stand a chance to be felicitated by the
+                Hon&apos;ble Chief Minister at the Annual Urban Governance
+                Summit. Earn official state-level badges and digital merit
+                certificates for every 5 verified fixes.
               </p>
 
               {/* Primary + Secondary CTAs */}
@@ -213,8 +188,12 @@ export function HomeLandingClient() {
                   href="/ward-wars"
                   className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap sm:w-auto"
                 >
-                  <Trophy size={16} aria-hidden="true" className="text-amber-600" />
-                  <span>View Ward Rankings</span>
+                  <Trophy
+                    size={16}
+                    aria-hidden="true"
+                    className="text-amber-600"
+                  />
+                  <span>View CM Honors &amp; Standings</span>
                 </Link>
               </div>
 
@@ -230,7 +209,7 @@ export function HomeLandingClient() {
                         &ldquo;{HINGLISH_DEMO_PHRASE}&rdquo;
                       </span>
                       <span className="block text-slate-500">
-                        Instant Hinglish-to-English CivicSnap AI structuring
+                        Try Hinglish Voice Report · Instant AI Structuring
                       </span>
                     </p>
                   </div>
@@ -241,12 +220,18 @@ export function HomeLandingClient() {
                     className="inline-flex min-h-[38px] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100 active:scale-95 disabled:opacity-60 whitespace-nowrap"
                   >
                     {voiceDemoBusy ? (
-                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                      <Loader2
+                        size={13}
+                        className="animate-spin"
+                        aria-hidden="true"
+                      />
                     ) : (
                       <Sparkles size={13} aria-hidden="true" />
                     )}
                     <span>
-                      {voiceDemoBusy ? "Converting..." : "Try Hinglish Voice"}
+                      {voiceDemoBusy
+                        ? "Converting..."
+                        : "Try Hinglish Voice Report"}
                     </span>
                   </button>
                 </div>
@@ -263,7 +248,10 @@ export function HomeLandingClient() {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-1 font-semibold text-emerald-800">
                           <CheckCircle2 size={13} aria-hidden="true" />
-                          <span>Structured Report Draft · {voiceDemoResult.categoryDisplay}</span>
+                          <span>
+                            Structured Report Draft ·{" "}
+                            {voiceDemoResult.categoryDisplay}
+                          </span>
                         </span>
                         <Link
                           href="/report"
@@ -284,7 +272,7 @@ export function HomeLandingClient() {
               </div>
             </div>
 
-            {/* Right Interactive Before & After / AI Audit Card */}
+            {/* Right Interactive AI Audit & Verification Card */}
             <div className="lg:col-span-6">
               <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
                 {/* Card Top Header + Interactive Toggle */}
@@ -362,11 +350,11 @@ export function HomeLandingClient() {
                     </motion.div>
                   </AnimatePresence>
 
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/75 via-slate-900/25 to-transparent px-5 pb-3.5 pt-10 text-white">
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/80 via-slate-900/30 to-transparent px-5 pb-3.5 pt-10 text-white">
                     <p className="text-xs font-medium text-white/85">
                       {auditView === "before"
-                        ? "Reported Issue · 100ft Road, Indiranagar"
-                        : "Contractor Proof Verified · 94.8% Vision Match"}
+                        ? "Reported Hazard · Ward 82 (Indiranagar)"
+                        : "Contractor Proof Verified · 94.8% Visual Match"}
                     </p>
                     <p className="mt-0.5 text-sm font-bold">
                       Severe Pothole near Chinmaya Mission Hospital
@@ -374,50 +362,68 @@ export function HomeLandingClient() {
                   </div>
                 </div>
 
-                {/* CivicSnap AI Engineering Audit Calculation Strip */}
+                {/* CivicSnap AI Engineering Audit Box + Verification Merit Tag */}
                 <div className="p-5">
                   <p className="text-xs font-semibold text-blue-600">
-                    CivicSnap Vision AI Engineering Audit
+                    CivicSnap AI Engineering &amp; Material Audit
                   </p>
                   <div className="mt-3 grid grid-cols-3 gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 p-3 text-center">
                     <div>
-                      <p className="font-mono text-base font-bold tabular-nums text-slate-900">
-                        140kg
+                      <p className="font-mono text-sm font-bold tabular-nums text-slate-900 sm:text-base">
+                        ~140 kg
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium text-slate-500">
-                        Asphalt
+                        Asphalt Required
                       </p>
                     </div>
                     <div className="border-x border-slate-200 px-1">
-                      <p className="font-mono text-base font-bold tabular-nums text-slate-900">
+                      <p className="font-mono text-sm font-bold tabular-nums text-slate-900 sm:text-base">
                         ₹3,200
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium text-slate-500">
-                        Audit Cost
+                        Estimated Cost
                       </p>
                     </div>
                     <div>
-                      <p className="font-mono text-base font-bold tabular-nums text-emerald-700">
-                        +50
+                      <p className="font-mono text-sm font-bold tabular-nums text-blue-700 sm:text-base">
+                        Ward 82
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium text-slate-500">
-                        CivicPoints
+                        Indiranagar
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span className="text-slate-500">
-                      Indiranagar Ward · Urgency Score{" "}
-                      <strong className="font-mono font-semibold text-slate-800">
-                        92/100
-                      </strong>
+                  {/* Verification Tag */}
+                  <div className="mt-3.5 rounded-xl border border-emerald-200/90 bg-emerald-50/70 px-3.5 py-2.5 text-xs font-semibold leading-5 text-emerald-900">
+                    <span className="inline-flex items-start gap-2">
+                      <CheckCircle2
+                        size={15}
+                        className="mt-0.5 shrink-0 text-emerald-600"
+                        aria-hidden="true"
+                      />
+                      <span>
+                        AI Before-vs-After Verified (94.8% Visual Match) •{" "}
+                        <strong className="text-amber-800">
+                          +50 Civic Merit Points
+                        </strong>{" "}
+                        awarded towards Annual CM Honors
+                      </span>
                     </span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <Link
+                      href="/rewards"
+                      className="font-semibold text-amber-800 hover:underline"
+                    >
+                      Track State Badges &amp; Certificates
+                    </Link>
                     <Link
                       href="/admin?mode=judge"
                       className="inline-flex items-center gap-1 font-semibold text-blue-600 transition-colors hover:text-blue-700"
                     >
-                      <span>Open Judge Verification Demo</span>
+                      <span>Open Audit Verification View</span>
                       <ArrowRight size={13} aria-hidden="true" />
                     </Link>
                   </div>
@@ -428,54 +434,260 @@ export function HomeLandingClient() {
         </div>
       </section>
 
-      {/* SECTION 1 — Overview / City Impact Numbers */}
+      {/* SECTION 1 — Annual CM Summit Prestige Banner (Full-Width Section) */}
       <section
-        id="overview"
-        className="scroll-mt-20 border-b border-slate-200/80 bg-white py-14 sm:py-16"
+        id="cm-honors"
+        className="scroll-mt-20 border-b border-slate-200/80 bg-gradient-to-br from-white via-amber-50/40 to-blue-50/45 py-16 sm:py-20"
       >
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-            <div className="max-w-2xl">
+          <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+            <div className="max-w-3xl">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
+                <Landmark size={13} aria-hidden="true" />
+                <span>State Urban Governance Recognition · Annual Summit</span>
+              </span>
+              <h2
+                className="mt-3 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-4xl"
+                style={{ textWrap: "balance" }}
+              >
+                The Chief Minister&apos;s Annual Civic Champions Trophy
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+                Held annually once at the Bengaluru Urban Governance Summit. The
+                top 5 citizen stewards with the highest verified points receive
+                official state honors, medals, and civic grants directly from
+                the Hon&apos;ble Chief Minister.
+              </p>
+            </div>
+
+            <Link
+              href="/ward-wars"
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
+            >
+              <Trophy size={16} aria-hidden="true" />
+              <span>View Top 5 CM Race</span>
+            </Link>
+          </div>
+
+          {/* 4 Key Perks of Top 5 */}
+          <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {CM_ANNUAL_AWARD_PERKS.map((perk, idx) => (
+              <StaggerReveal key={perk.number} delay={idx * 0.05}>
+                <HoverCard className="flex h-full flex-col justify-between border-amber-200/80 bg-white p-5 sm:p-6">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 font-mono text-xs font-bold text-amber-800 border border-amber-200">
+                        {perk.number}
+                      </span>
+                      <span className="text-[11px] font-semibold text-amber-700">
+                        Top 5 Honor
+                      </span>
+                    </div>
+                    <h3 className="mt-4 text-base font-bold leading-snug text-slate-900">
+                      {perk.title}
+                    </h3>
+                    <p className="mt-2 text-xs leading-5 text-slate-600 sm:text-sm sm:leading-6">
+                      {perk.description}
+                    </p>
+                  </div>
+                </HoverCard>
+              </StaggerReveal>
+            ))}
+          </div>
+
+          {/* Live Season Deadline Counter Bar */}
+          <div className="mt-7 flex flex-col items-start justify-between gap-3 rounded-2xl border border-amber-300/80 bg-white px-5 py-4 shadow-xs sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 text-sm font-semibold text-slate-900">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                <Clock size={17} aria-hidden="true" />
+              </span>
+              <span>
+                {ANNUAL_CM_SEASON_YEAR} Annual Season Closes:{" "}
+                <strong className="text-blue-700">
+                  {ANNUAL_CM_SEASON_CLOSE_LABEL}
+                </strong>{" "}
+                <span className="text-slate-300" aria-hidden="true">
+                  |
+                </span>{" "}
+                Top 5 qualify for the State Podium
+              </span>
+            </div>
+            <Link
+              href="/rewards"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 whitespace-nowrap"
+            >
+              <span>Check Your Merit Progress</span>
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 2 — Automated Digital Certificate Showcase */}
+      <section
+        id="certificates"
+        className="scroll-mt-20 border-b border-slate-200/80 bg-white py-16 sm:py-20"
+      >
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="grid items-center gap-10 lg:grid-cols-12">
+            {/* Left Description Column */}
+            <div className="lg:col-span-5">
               <p className="text-xs font-semibold tracking-wide text-blue-600">
-                Bengaluru Pilot Overview
+                Automated Digital Credentials · Zero Manual Approval
               </p>
               <h2
                 className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-3xl"
                 style={{ textWrap: "balance" }}
               >
-                Measurable street accountability across 7 Bengaluru wards
+                Earn Official State Recognition on Autopilot.
               </h2>
-            </div>
-            <Link
-              href="/feed"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700 whitespace-nowrap"
-            >
-              <span>Browse Live Public Feed</span>
-              <ArrowRight size={15} aria-hidden="true" />
-            </Link>
-          </div>
+              <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+                Every 5 verified reports unlock an official digital &ldquo;Civic
+                Merit Certificate&rdquo; branded for Bengaluru Urban. Share your
+                civic contribution directly to LinkedIn and portfolio with one
+                click.
+              </p>
 
-          <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {IMPACT_METRICS.map((metric, idx) => (
-              <StaggerReveal key={metric.label} delay={idx * 0.05}>
-                <HoverCard className="h-full p-5 sm:p-6">
-                  <p className="font-[var(--font-heading)] text-3xl font-extrabold tabular-nums text-slate-900 sm:text-4xl">
-                    {metric.value}
+              <ul className="mt-6 space-y-3 text-sm text-slate-700">
+                <li className="flex items-start gap-2.5">
+                  <CheckCircle2
+                    size={17}
+                    className="mt-0.5 shrink-0 text-emerald-600"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Auto-generated client-side at 5, 10, 15, and 20 verified
+                    fixes with unique tamper-evident Certificate ID.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <CheckCircle2
+                    size={17}
+                    className="mt-0.5 shrink-0 text-emerald-600"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Includes official Bengaluru Urban seal, scannable QR code,
+                    and Directorate digital signature.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <CheckCircle2
+                    size={17}
+                    className="mt-0.5 shrink-0 text-emerald-600"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    One-click Print/PDF download and LinkedIn achievement share.
+                  </span>
+                </li>
+              </ul>
+
+              <div className="mt-7 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleOpenSampleCertificate}
+                  className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
+                >
+                  <FileCheck2 size={16} aria-hidden="true" />
+                  <span>Preview Sample Certificate</span>
+                </button>
+                <Link
+                  href="/rewards"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100"
+                >
+                  <span>Open Civic Honors Portal</span>
+                  <ExternalLink size={14} aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Right Framed Gold-Bordered Certificate Visual Preview */}
+            <div className="lg:col-span-7">
+              <div className="rounded-2xl border-4 border-double border-amber-500/90 bg-gradient-to-b from-amber-50/40 via-white to-amber-50/30 p-3 shadow-md sm:p-5">
+                <div className="rounded-xl border border-amber-300/80 bg-white px-5 py-6 text-center sm:px-8 sm:py-8">
+                  <p className="text-[10px] font-bold tracking-[0.18em] text-blue-700 uppercase">
+                    GOVERNMENT OF KARNATAKA • URBAN INFRASTRUCTURE COLLABORATIVE
                   </p>
-                  <p className="mt-2 text-sm font-semibold text-slate-800">
-                    {metric.label}
+                  <h3 className="mt-3 font-[var(--font-heading)] text-xl font-extrabold tracking-wide text-slate-900 sm:text-2xl">
+                    CERTIFICATE OF CIVIC MERIT
+                  </h3>
+                  <p className="mt-1 text-xs font-semibold text-amber-700">
+                    Level 1 · State Urban Sentinel (5 Verified Fixes)
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    {metric.detail}
+
+                  <p className="mt-4 text-xs text-slate-500">
+                    This is proudly presented to
                   </p>
-                </HoverCard>
-              </StaggerReveal>
-            ))}
+                  <p className="mx-auto mt-1 inline-block border-b-2 border-amber-400 px-5 pb-1 font-[var(--font-heading)] text-xl font-extrabold text-blue-900 sm:text-2xl">
+                    Aarav Sharma
+                  </p>
+
+                  <p className="mx-auto mt-3 max-w-md text-xs leading-6 text-slate-600">
+                    in recognition of outstanding civic stewardship and
+                    verifying{" "}
+                    <strong className="font-semibold text-slate-900">
+                      5 public infrastructure fixes
+                    </strong>{" "}
+                    in Bengaluru Urban, validated through CivicSnap AI Audit.
+                  </p>
+
+                  <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-t border-slate-200 pt-5 text-left">
+                    {/* QR + Certificate Hash */}
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        aria-hidden="true"
+                        className="grid grid-cols-9 gap-0.5 rounded-lg border border-slate-200 bg-white p-1"
+                      >
+                        {sampleQrMatrix.flatMap((row, rIdx) =>
+                          row.map((filled, cIdx) => (
+                            <span
+                              key={`preview-${rIdx}-${cIdx}`}
+                              className={`h-1 w-1 rounded-[0.5px] ${
+                                filled ? "bg-slate-900" : "bg-transparent"
+                              }`}
+                            />
+                          ))
+                        )}
+                      </div>
+                      <div className="text-[10px] leading-4 text-slate-500">
+                        <p className="font-mono text-[11px] font-bold text-slate-900">
+                          {SAMPLE_CERT_ID}
+                        </p>
+                        <p>Bengaluru Urban Verified</p>
+                      </div>
+                    </div>
+
+                    {/* Gold Embossed Seal */}
+                    <div className="flex h-16 w-16 flex-col items-center justify-center rounded-full border-2 border-double border-amber-600 bg-gradient-to-br from-amber-100 via-amber-200 to-amber-400 text-center">
+                      <ShieldCheck
+                        size={14}
+                        className="text-amber-900"
+                        aria-hidden="true"
+                      />
+                      <span className="mt-0.5 text-[7px] font-extrabold tracking-wide text-amber-950 uppercase">
+                        AI Verified
+                      </span>
+                    </div>
+
+                    {/* Directorate Sign-off */}
+                    <div className="text-right">
+                      <p className="font-serif text-sm italic font-semibold text-blue-900">
+                        Urban Dev. Directorate
+                      </p>
+                      <p className="text-[10px] font-medium text-slate-500">
+                        Official Digital Signatory
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* SECTION 2 — How It Works (3-Step Citizen Process) */}
+      {/* SECTION 3 — How It Works (3 Steps) */}
       <section
         id="how-it-works"
         className="scroll-mt-20 border-b border-slate-200/80 bg-slate-50 py-16 sm:py-20"
@@ -489,7 +701,8 @@ export function HomeLandingClient() {
               className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-3xl"
               style={{ textWrap: "balance" }}
             >
-              From street snap to AI-verified fix in three simple steps
+              From street snap to AI-verified fix and state honors in three
+              steps
             </h2>
           </div>
 
@@ -521,72 +734,10 @@ export function HomeLandingClient() {
         </div>
       </section>
 
-      {/* SECTION 3 — Key Features (4 Light Bento Cards) */}
-      <section
-        id="features"
-        className="scroll-mt-20 border-b border-slate-200/80 bg-white py-16 sm:py-20"
-      >
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold tracking-wide text-blue-600">
-              Key Features
-            </p>
-            <h2
-              className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-3xl"
-              style={{ textWrap: "balance" }}
-            >
-              Engineered for daylight clarity, contractor accountability, and
-              citizen rewards
-            </h2>
-          </div>
-
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
-            {BENTO_FEATURES.map((feature, idx) => {
-              const Icon = feature.icon;
-              return (
-                <StaggerReveal key={feature.title} delay={idx * 0.05}>
-                  <HoverCard className="flex h-full flex-col justify-between p-6">
-                    <div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                          <Icon size={20} aria-hidden="true" />
-                        </span>
-                        <span className="font-mono text-xs font-semibold tabular-nums text-slate-500">
-                          {feature.metric}
-                        </span>
-                      </div>
-                      <p className="mt-4 text-xs font-semibold text-blue-600">
-                        {feature.subtitle}
-                      </p>
-                      <h3 className="mt-1 text-xl font-bold text-slate-900">
-                        {feature.title}
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        {feature.description}
-                      </p>
-                    </div>
-
-                    <div className="mt-6 border-t border-slate-100 pt-4">
-                      <Link
-                        href={feature.href}
-                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700"
-                      >
-                        <span>{feature.cta}</span>
-                        <ArrowRight size={15} aria-hidden="true" />
-                      </Link>
-                    </div>
-                  </HoverCard>
-                </StaggerReveal>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
       {/* SECTION 4 — FAQ Accordion */}
       <section
         id="faq"
-        className="scroll-mt-20 border-b border-slate-200/80 bg-slate-50 py-16 sm:py-20"
+        className="scroll-mt-20 border-b border-slate-200/80 bg-white py-16 sm:py-20"
       >
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
@@ -597,7 +748,8 @@ export function HomeLandingClient() {
               className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-3xl"
               style={{ textWrap: "balance" }}
             >
-              Clear answers on privacy, CivicPoints, and AI contractor audits
+              Clear answers on State Honors, Certificates, and AI contractor
+              audits
             </h2>
           </div>
 
@@ -608,10 +760,11 @@ export function HomeLandingClient() {
       </section>
 
       {/* SECTION 5 — Light Daylight Final CTA */}
-      <section className="bg-white py-16 sm:py-20">
+      <section className="bg-slate-50 py-16 sm:py-20">
         <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
           <p className="text-xs font-semibold tracking-wide text-blue-600">
-            Bengaluru CivicSnap Pilot
+            Bengaluru CivicSnap Pilot · State Urban Governance Honors{" "}
+            {ANNUAL_CM_SEASON_YEAR}
           </p>
           <h2
             className="mx-auto mt-2 max-w-2xl font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-4xl"
@@ -621,8 +774,9 @@ export function HomeLandingClient() {
             seconds.
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-slate-600">
-            Help push your ward to #1 on Ward Wars and redeem CivicPoints at
-            Third Wave Coffee, Cult.fit, and Zepto.
+            Earn +50 Civic Merit Points per AI-verified repair, unlock automated
+            Bengaluru Urban Merit Certificates, and compete for the Chief
+            Minister&apos;s Annual Civic Champions Trophy.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3.5">
@@ -634,14 +788,21 @@ export function HomeLandingClient() {
               <span>Report an Issue</span>
             </Link>
             <Link
-              href="/admin?mode=judge"
-              className="inline-flex min-h-[48px] items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap"
+              href="/rewards"
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap"
             >
-              Explore Judge Demo Dashboard
+              <Award size={16} className="text-amber-600" aria-hidden="true" />
+              <span>Explore Civic Honors</span>
             </Link>
           </div>
         </div>
       </section>
+
+      {/* Interactive Certificate Preview Modal */}
+      <CertificateModal
+        certificate={previewCertificate}
+        onClose={() => setPreviewCertificate(null)}
+      />
     </PageTransition>
   );
 }

@@ -13,7 +13,7 @@ const PLATFORM_LINKS = [
   { label: "Report an Issue", href: "/report" },
   { label: "Explore Issues", href: "/feed" },
   { label: "Ward Wars Leaderboard", href: "/ward-wars" },
-  { label: "Rewards Store", href: "/rewards" },
+  { label: "Civic Honors", href: "/rewards" },
   { label: "City Dashboard", href: "/admin" },
   { label: "Read-Only Demo", href: "/demo" },
 ] as const;
@@ -70,7 +70,8 @@ export function SiteFooter() {
             <p className="mt-1.5 text-sm leading-6 text-blue-100/90">
               Civic accountability for Bengaluru wards — report in Hinglish,
               capture live street evidence, audit contractor materials with
-              CivicSnap AI, and earn neighborhood café perks.
+              CivicSnap AI, and earn Official State Civic Honors &amp; Digital
+              Merit Certificates.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2.5">
               {SOCIAL_LINKS.map((social) => {

@@ -11,7 +11,6 @@ import {
   type LeaderboardEntry,
   type PublicIssueRecord,
   type ReviewState,
-  type RewardItem,
 } from "@/types/civic";
 
 export const MAX_PHOTO_BYTES = 25 * 1024 * 1024; // 25 MB raw (auto-compressed client-side <100KB)
@@ -773,78 +772,3 @@ export function computeAdminReportStats(
     resolved,
   };
 }
-
-/**
- * Local merchant discount catalog for the CivicSnap Rewards Store (/rewards).
- */
-export const REWARD_CATALOG: readonly RewardItem[] = [
-  {
-    id: "cafe-free-coffee",
-    title: "Third Wave Coffee — 20% OFF",
-    merchantCategory: "Bengaluru Cafés",
-    description:
-      "Enjoy 20% off specialty brews & snacks at Third Wave Coffee outlets across Indiranagar, Koramangala, and HSR Layout.",
-    pointsCost: 100,
-    terms: "Min bill ₹300",
-    codePrefix: "TWC20",
-    validityMinutes: 15,
-  },
-  {
-    id: "gym-15-off",
-    title: "Cult.fit — 1-Day Free Pass",
-    merchantCategory: "Fitness & Wellness",
-    description:
-      "Unlock a complimentary 1-day all-access workout or group class pass at participating Bengaluru Cult.fit centres.",
-    pointsCost: 150,
-    terms: "1 pass per week",
-    codePrefix: "CULT1D",
-    validityMinutes: 15,
-  },
-  {
-    id: "grocery-10-off",
-    title: "Zepto — ₹100 OFF",
-    merchantCategory: "Quick Commerce",
-    description:
-      "Save ₹100 instantly on fresh groceries and daily essentials delivered in 10 minutes across Bengaluru pilot wards.",
-    pointsCost: 200,
-    terms: "Min cart ₹499",
-    codePrefix: "ZEP100",
-    validityMinutes: 15,
-  },
-] as const;
-
-export const REWARD_VOUCHER_DURATION_SECONDS = 15 * 60;
-
-export function canRedeemReward(
-  currentPoints: number,
-  reward: Pick<RewardItem, "pointsCost">
-): { eligible: boolean; shortfall: number } {
-  const safePoints = Math.max(0, Math.floor(currentPoints || 0));
-  if (safePoints >= reward.pointsCost) {
-    return { eligible: true, shortfall: 0 };
-  }
-  return { eligible: false, shortfall: reward.pointsCost - safePoints };
-}
-
-export function generateUniqueCouponCode(prefix: string): string {
-  const cleanPrefix =
-    prefix
-      .replace(/[^A-Z0-9]/gi, "")
-      .toUpperCase()
-      .slice(0, 8) || "CIVIC";
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let token = "";
-  for (let i = 0; i < 6; i += 1) {
-    const idx = Math.floor(Math.random() * alphabet.length);
-    token += alphabet[idx];
-  }
-  return `CS-${cleanPrefix}-${token}`;
-}
-
-export function formatCountdownSeconds(remainingSeconds: number): string {
-  const clamped = Math.max(0, Math.floor(remainingSeconds || 0));
-  const mins = Math.floor(clamped / 60);
-  const secs = clamped % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-

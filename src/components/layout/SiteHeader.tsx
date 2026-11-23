@@ -8,9 +8,10 @@ import {
   Award,
   Camera,
   Compass,
-  Gift,
+  FileCheck2,
   HelpCircle,
   Home,
+  Landmark,
   LogIn,
   LogOut,
   MapPin,
@@ -39,7 +40,7 @@ const PRIMARY_NAV_ITEMS = [
     isStaff: false,
   },
   {
-    label: "Rewards Store",
+    label: "Civic Honors",
     href: "/rewards",
     matchPrefixes: ["/rewards"],
     isStaff: false,
@@ -54,16 +55,16 @@ const PRIMARY_NAV_ITEMS = [
 
 const DRAWER_OVERVIEW_ITEMS = [
   { label: "Home", href: "/", icon: Home },
-  { label: "Overview", href: "/#overview", icon: Compass },
+  { label: "CM Annual Honors", href: "/#cm-honors", icon: Landmark },
+  { label: "Merit Certificates", href: "/#certificates", icon: FileCheck2 },
   { label: "How It Works", href: "/#how-it-works", icon: Sparkles },
-  { label: "Key Features", href: "/#features", icon: Award },
   { label: "FAQ & Help", href: "/#faq", icon: HelpCircle },
 ] as const;
 
 const DRAWER_PLATFORM_ITEMS = [
   { label: "Explore Issues", href: "/feed", icon: MapPin },
   { label: "Leaderboard", href: "/ward-wars", icon: Trophy },
-  { label: "Rewards Store", href: "/rewards", icon: Gift },
+  { label: "Civic Honors", href: "/rewards", icon: Award },
   { label: "Dashboard (Staff)", href: "/admin", icon: Shield },
   { label: "Read-Only Audit View", href: "/admin?mode=judge", icon: ShieldCheck },
 ] as const;
@@ -92,17 +93,22 @@ export function SiteHeader() {
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:gap-6 lg:px-8">
-          {/* Zone 1: Brand Logo */}
-          <Link
-            href="/"
-            aria-label="CivicSnap home"
-            className="inline-flex min-h-[40px] shrink-0 items-center rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600"
-          >
-            <CivicSnapLogo size="md" theme="light" />
-          </Link>
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6 lg:gap-4 lg:px-8">
+          {/* Zone 1: Brand Logo + Green Bengaluru Pilot Pill */}
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/"
+              aria-label="CivicSnap home"
+              className="inline-flex min-h-[40px] shrink-0 items-center rounded-xl focus-visible:outline-2 focus-visible:outline-blue-600"
+            >
+              <CivicSnapLogo size="md" theme="light" />
+            </Link>
+            <span className="hidden xl:inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 whitespace-nowrap shrink-0">
+              Bengaluru Pilot
+            </span>
+          </div>
 
-          {/* Zone 2: Center Nav Links (Always visible on md+ tablet/laptop/desktop) */}
+          {/* Zone 2: Center Nav Links (Exact Order: Explore Issues, Leaderboard, Civic Honors, Dashboard) */}
           <nav
             aria-label="Primary navigation"
             className="hidden md:flex items-center gap-0.5 lg:gap-1"
@@ -116,7 +122,7 @@ export function SiteHeader() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative whitespace-nowrap shrink-0 rounded-xl px-2.5 py-2 text-xs font-medium transition-colors lg:px-3.5 lg:text-sm ${
+                  className={`relative whitespace-nowrap shrink-0 rounded-xl px-2.5 py-2 text-xs font-medium transition-colors lg:px-3 lg:text-sm ${
                     isActive
                       ? "text-blue-700 font-semibold"
                       : "text-slate-600 hover:text-slate-900"
@@ -150,17 +156,17 @@ export function SiteHeader() {
             })}
           </nav>
 
-          {/* Zone 3: Right Actions + Three-Dots Drawer Trigger */}
-          <div className="flex shrink-0 items-center gap-2">
+          {/* Zone 3: Right Actions (Sign In, My Profile, Report an Issue) + Three-Dots Drawer */}
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {user ? (
               <>
                 <Link
                   href="/profile"
-                  className="hidden lg:inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap shrink-0"
+                  className="hidden lg:inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap shrink-0 xl:text-sm"
                 >
                   <User size={15} aria-hidden="true" className="text-blue-600" />
-                  <span className="max-w-[100px] truncate">
-                    {displayAlias || "Profile"}
+                  <span className="max-w-[96px] truncate">
+                    {displayAlias || "My Profile"}
                   </span>
                 </Link>
                 <button
@@ -168,9 +174,9 @@ export function SiteHeader() {
                   onClick={() => void signOutUser()}
                   disabled={busy}
                   aria-label="Sign out"
-                  className="hidden lg:inline-flex min-h-[40px] items-center gap-1 rounded-xl px-2.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0"
+                  className="hidden xl:inline-flex min-h-[40px] cursor-pointer items-center gap-1 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0"
                 >
-                  <LogOut size={15} aria-hidden="true" />
+                  <LogOut size={14} aria-hidden="true" />
                   <span>Sign Out</span>
                 </button>
               </>
@@ -178,15 +184,16 @@ export function SiteHeader() {
               <>
                 <Link
                   href="/login"
-                  className="hidden lg:inline-flex min-h-[40px] items-center rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0"
+                  className="hidden lg:inline-flex min-h-[40px] items-center rounded-xl px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0 xl:text-sm"
                 >
                   Sign In
                 </Link>
                 <Link
-                  href="/signup"
-                  className="hidden lg:inline-flex min-h-[40px] items-center rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap shrink-0"
+                  href="/profile"
+                  className="hidden lg:inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap shrink-0 xl:text-sm"
                 >
-                  Sign Up
+                  <User size={14} aria-hidden="true" className="text-blue-600" />
+                  <span>My Profile</span>
                 </Link>
               </>
             )}
@@ -218,7 +225,7 @@ export function SiteHeader() {
           </div>
         </div>
 
-        {/* Mobile Top Navigation Strip (keeps Explore Issues, Leaderboard, Rewards Store, Dashboard always visible without clipping on phones) */}
+        {/* Mobile Top Navigation Strip (Explore Issues, Leaderboard, Civic Honors, Dashboard) */}
         <nav
           aria-label="Mobile quick navigation"
           className="flex md:hidden items-center justify-between gap-1 border-t border-slate-100 bg-slate-50/90 px-2 py-1.5"
@@ -256,7 +263,6 @@ export function SiteHeader() {
       <AnimatePresence>
         {drawerOpen && (
           <div className="fixed inset-0 z-50 flex justify-end">
-            {/* Backdrop scrim */}
             <motion.div
               key="drawer-backdrop"
               initial={{ opacity: 0 }}
@@ -268,7 +274,6 @@ export function SiteHeader() {
               className="fixed inset-0 bg-slate-900/35 backdrop-blur-[2px]"
             />
 
-            {/* Crisp White Sliding Panel */}
             <motion.aside
               key="drawer-panel"
               id="civicsnap-slide-drawer"
@@ -283,7 +288,12 @@ export function SiteHeader() {
             >
               {/* Drawer Header */}
               <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-4">
-                <CivicSnapLogo size="sm" theme="light" />
+                <div className="flex items-center gap-2">
+                  <CivicSnapLogo size="sm" theme="light" />
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    Bengaluru Pilot
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => setDrawerOpen(false)}
@@ -296,10 +306,10 @@ export function SiteHeader() {
 
               {/* Scrollable Sections */}
               <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
-                {/* Section 1: Overview */}
-                <section aria-label="Overview links">
+                {/* Section 1: Site Overview */}
+                <section aria-label="Site overview links">
                   <p className="px-3 pb-2 text-xs font-semibold tracking-wide text-slate-400">
-                    Overview
+                    Site Overview
                   </p>
                   <ul className="space-y-1">
                     {DRAWER_OVERVIEW_ITEMS.map((item) => {
@@ -361,7 +371,34 @@ export function SiteHeader() {
 
                 <div className="border-t border-slate-100" />
 
-                {/* Section 3: Account & Legal */}
+                {/* Section 3: State Honors Details */}
+                <section
+                  aria-label="State Civic Honors details"
+                  className="rounded-2xl border border-amber-200/90 bg-amber-50/50 p-3.5"
+                >
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
+                    <Landmark size={15} className="text-amber-700" aria-hidden="true" />
+                    <span>State Civic Honors 2025</span>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-5 text-slate-700">
+                    Top 5 Bengaluru citizens are felicitated by the Hon&apos;ble
+                    Chief Minister at the Annual Urban Governance Summit. Every
+                    5 verified fixes automatically issue an official Digital
+                    Civic Merit Certificate.
+                  </p>
+                  <Link
+                    href="/rewards"
+                    onClick={() => setDrawerOpen(false)}
+                    className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:underline"
+                  >
+                    <Compass size={13} aria-hidden="true" />
+                    <span>Open Civic Honors Portal →</span>
+                  </Link>
+                </section>
+
+                <div className="border-t border-slate-100" />
+
+                {/* Section 4: Account & Legal */}
                 <section aria-label="Account and legal links">
                   <p className="px-3 pb-2 text-xs font-semibold tracking-wide text-slate-400">
                     Account &amp; Legal
@@ -379,7 +416,9 @@ export function SiteHeader() {
                           className="shrink-0 text-slate-500"
                         />
                         <span>
-                          {user ? `My Profile (${displayAlias})` : "My Profile"}
+                          {user
+                            ? `My Profile (${displayAlias})`
+                            : "My Profile & Certificates"}
                         </span>
                       </Link>
                     </li>

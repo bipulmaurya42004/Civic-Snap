@@ -341,116 +341,155 @@ export const WARD_WARS_STANDINGS: readonly WardStanding[] = [
 export interface CitizenStarEntry {
   rank: number;
   alias: string;
+  initials: string;
   ward: string;
   civicPoints: number;
   verifiedFixes: number;
   reportsAccepted: number;
-  tierLabel: "City Guardian" | "Eco Warrior" | "Street Watcher";
+  tierLabel:
+    | "CM Civic Laureate"
+    | "National Civic Vanguard"
+    | "State Infrastructure Guardian"
+    | "State Urban Sentinel"
+    | "Ward Scout";
   specialty: string;
+  isCmContender: boolean;
 }
 
 export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
   {
     rank: 1,
     alias: "IndiranagarRider",
+    initials: "IR",
     ward: "Indiranagar",
-    civicPoints: 1420,
-    verifiedFixes: 28,
-    reportsAccepted: 34,
-    tierLabel: "City Guardian",
+    civicPoints: 1480,
+    verifiedFixes: 32,
+    reportsAccepted: 38,
+    tierLabel: "CM Civic Laureate",
     specialty: "Road & Hospital Zone Audits",
+    isCmContender: true,
   },
   {
     rank: 2,
     alias: "HSRStreetWatch",
+    initials: "HS",
     ward: "HSR Layout",
-    civicPoints: 1285,
-    verifiedFixes: 25,
-    reportsAccepted: 31,
-    tierLabel: "City Guardian",
+    civicPoints: 1345,
+    verifiedFixes: 28,
+    reportsAccepted: 33,
+    tierLabel: "CM Civic Laureate",
     specialty: "Sanitation & Footpath Safety",
+    isCmContender: true,
   },
   {
     rank: 3,
     alias: "KoramangalaCivic",
+    initials: "KC",
     ward: "Koramangala",
-    civicPoints: 1140,
-    verifiedFixes: 22,
-    reportsAccepted: 27,
-    tierLabel: "City Guardian",
+    civicPoints: 1240,
+    verifiedFixes: 24,
+    reportsAccepted: 29,
+    tierLabel: "CM Civic Laureate",
     specialty: "School Zone Streetlights",
+    isCmContender: true,
   },
   {
     rank: 4,
     alias: "WhitefieldCommuter",
+    initials: "WC",
     ward: "Whitefield",
-    civicPoints: 980,
-    verifiedFixes: 19,
-    reportsAccepted: 24,
-    tierLabel: "City Guardian",
+    civicPoints: 1165,
+    verifiedFixes: 21,
+    reportsAccepted: 25,
+    tierLabel: "CM Civic Laureate",
     specialty: "ITPL Corridor Potholes",
+    isCmContender: true,
   },
   {
     rank: 5,
     alias: "JayanagarWalker",
+    initials: "JW",
     ward: "Jayanagar",
-    civicPoints: 865,
-    verifiedFixes: 17,
-    reportsAccepted: 21,
-    tierLabel: "City Guardian",
+    civicPoints: 1100,
+    verifiedFixes: 19,
+    reportsAccepted: 23,
+    tierLabel: "CM Civic Laureate",
     specialty: "Pedestrian Kerb Repairs",
+    isCmContender: true,
   },
   {
     rank: 6,
     alias: "MalleshwaramGuard",
+    initials: "MG",
     ward: "Malleshwaram",
-    civicPoints: 790,
-    verifiedFixes: 15,
-    reportsAccepted: 19,
-    tierLabel: "City Guardian",
+    civicPoints: 990,
+    verifiedFixes: 17,
+    reportsAccepted: 21,
+    tierLabel: "State Infrastructure Guardian",
     specialty: "Heritage Lane Lighting",
+    isCmContender: false,
   },
   {
     rank: 7,
     alias: "MGRoadScout",
+    initials: "MS",
     ward: "MG Road",
-    civicPoints: 710,
-    verifiedFixes: 14,
-    reportsAccepted: 17,
-    tierLabel: "City Guardian",
+    civicPoints: 925,
+    verifiedFixes: 16,
+    reportsAccepted: 19,
+    tierLabel: "State Infrastructure Guardian",
     specialty: "Metro Approach Safety",
+    isCmContender: false,
   },
   {
     rank: 8,
     alias: "UlsoorFixer",
+    initials: "UF",
     ward: "Indiranagar",
-    civicPoints: 645,
-    verifiedFixes: 12,
-    reportsAccepted: 16,
-    tierLabel: "City Guardian",
+    civicPoints: 865,
+    verifiedFixes: 15,
+    reportsAccepted: 18,
+    tierLabel: "State Infrastructure Guardian",
     specialty: "Drainage & Asphalt Audits",
+    isCmContender: false,
   },
   {
     rank: 9,
     alias: "BellandurPulse",
+    initials: "BP",
     ward: "HSR Layout",
-    civicPoints: 580,
-    verifiedFixes: 11,
-    reportsAccepted: 14,
-    tierLabel: "City Guardian",
+    civicPoints: 810,
+    verifiedFixes: 12,
+    reportsAccepted: 15,
+    tierLabel: "State Urban Sentinel",
     specialty: "Lake Road Waste Clearance",
+    isCmContender: false,
   },
   {
     rank: 10,
     alias: "SarjapurHelper",
+    initials: "SH",
     ward: "Koramangala",
-    civicPoints: 515,
+    civicPoints: 775,
     verifiedFixes: 10,
-    reportsAccepted: 13,
-    tierLabel: "City Guardian",
+    reportsAccepted: 14,
+    tierLabel: "State Urban Sentinel",
     specialty: "Hinglish Voice Reporting",
+    isCmContender: false,
   },
 ] as const;
+
+function computeInitials(alias: string): string {
+  const parts = alias
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim()
+    .split(/[\s_-]+/)
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return alias.slice(0, 2).toUpperCase() || "CS";
+}
 
 export function buildCitizenStarsLeaderboard(
   liveProfiles: ReadonlyArray<{
@@ -471,18 +510,28 @@ export function buildCitizenStarsLeaderboard(
     if (profile.leaderboardOptIn === false) continue;
     const pts = Math.max(0, Math.floor(profile.civicPoints ?? 0));
     if (pts <= 0 || !profile.alias.trim()) continue;
-    const key = profile.alias.trim().toLowerCase();
+    const cleanAlias = profile.alias.trim();
+    const key = cleanAlias.toLowerCase();
+    const fixes = Math.max(0, profile.resolvedReportsCount ?? 0);
     const tierLabel: CitizenStarEntry["tierLabel"] =
-      pts > 200 ? "City Guardian" : pts > 50 ? "Eco Warrior" : "Street Watcher";
+      fixes >= 30
+        ? "National Civic Vanguard"
+        : fixes >= 15
+          ? "State Infrastructure Guardian"
+          : fixes >= 5
+            ? "State Urban Sentinel"
+            : "Ward Scout";
     byAlias.set(key, {
       rank: 0,
-      alias: profile.alias.trim(),
+      alias: cleanAlias,
+      initials: computeInitials(cleanAlias),
       ward: "Bengaluru Pilot",
       civicPoints: pts,
-      verifiedFixes: Math.max(0, profile.resolvedReportsCount ?? 0),
+      verifiedFixes: fixes,
       reportsAccepted: Math.max(0, profile.acceptedReportsCount ?? 0),
       tierLabel,
       specialty: "Verified Live Contributor",
+      isCmContender: false,
     });
   }
 
@@ -494,10 +543,16 @@ export function buildCitizenStarsLeaderboard(
         a.alias.localeCompare(b.alias)
     )
     .slice(0, 10)
-    .map((entry, idx) => ({
-      ...entry,
-      rank: idx + 1,
-    }));
+    .map((entry, idx) => {
+      const rank = idx + 1;
+      const isCmContender = rank <= 5;
+      return {
+        ...entry,
+        rank,
+        isCmContender,
+        tierLabel: isCmContender ? "CM Civic Laureate" : entry.tierLabel,
+      };
+    });
 }
 
 export interface JudgeVerificationItem {
@@ -592,8 +647,8 @@ export const JUDGE_DEMO_VERIFICATIONS: readonly JudgeVerificationItem[] = [
 ] as const;
 
 /**
- * Generates a deterministic 9x9 QR-like verification matrix from a coupon code
- * so merchant verification modals render crisp scannable visuals with pure CSS blocks.
+ * Generates a deterministic 9x9 QR-like verification matrix from a certificate ID
+ * so official Civic Merit Certificates render crisp scannable verification marks.
  */
 export function generateQrMatrix(code: string): boolean[][] {
   const size = 9;

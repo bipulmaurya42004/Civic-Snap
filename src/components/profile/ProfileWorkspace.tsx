@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   Award,
   Camera,
   CheckCircle2,
-  Gift,
+  Crown,
+  FileCheck2,
   Loader2,
   LogOut,
   MapPin,
@@ -21,24 +22,20 @@ import {
   fetchMyReports,
   type StoredPrivateReport,
 } from "@/lib/firebase-reports";
-import { fetchMyRewardRedemptions } from "@/lib/firebase-users";
 import {
   formatCivicDate,
   getCategoryLabel,
-  getCivicLevelBadge,
   POINTS_PER_ACCEPTED_REPORT,
   POINTS_PER_RESOLVED_REPORT,
 } from "@/lib/civic-logic";
-import { CivicBadgeChip } from "@/components/ui/CivicBadgeChip";
+import {
+  computeCitizenHonorsSnapshot,
+  formatCertificateIssueDate,
+} from "@/lib/civic-honors";
+import { CertificateModal } from "@/components/CertificateModal";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { EmptyState, LoadingState } from "@/components/ui/StateViews";
-import type { RewardRedemptionRecord } from "@/types/civic";
-
-const BADGE_TIERS_GUIDE = [
-  { label: "Bronze", title: "Street Watcher", range: "0 – 50 pts" },
-  { label: "Silver", title: "Eco Warrior", range: "51 – 200 pts" },
-  { label: "Gold", title: "City Guardian", range: "200+ pts" },
-] as const;
+import type { CertificateMilestone, CivicCertificateData } from "@/types/civic";
 
 export function ProfileWorkspace() {
   const {
@@ -57,10 +54,11 @@ export function ProfileWorkspace() {
   const [aliasInput, setAliasInput] = useState("");
   const [optInInput, setOptInInput] = useState(false);
   const [reports, setReports] = useState<StoredPrivateReport[]>([]);
-  const [redemptions, setRedemptions] = useState<RewardRedemptionRecord[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeCertificate, setActiveCertificate] =
+    useState<CivicCertificateData | null>(null);
 
   useEffect(() => {
     if (profile) {
@@ -74,7 +72,6 @@ export function ProfileWorkspace() {
   useEffect(() => {
     if (!authReady || !user) {
       setReports([]);
-      setRedemptions([]);
       return;
     }
 
@@ -82,14 +79,10 @@ export function ProfileWorkspace() {
     setReportsLoading(true);
     setReportsError(null);
 
-    Promise.all([
-      fetchMyReports(user.uid),
-      fetchMyRewardRedemptions(user.uid).catch(() => []),
-    ])
-      .then(([reportItems, redemptionItems]) => {
+    fetchMyReports(user.uid)
+      .then((reportItems) => {
         if (!cancelled) {
           setReports(reportItems);
-          setRedemptions(redemptionItems);
         }
       })
       .catch(() => {
@@ -108,6 +101,28 @@ export function ProfileWorkspace() {
     };
   }, [authReady, user]);
 
+  const civicPoints = profile?.civicPoints ?? 0;
+  const acceptedCount =
+    profile?.acceptedReportsCount ??
+    reports.filter((r) => r.reviewState === "accepted").length;
+  const resolvedCount =
+    profile?.resolvedReportsCount ??
+    reports.filter(
+      (r) => r.reviewState === "accepted" && r.status === "resolved"
+    ).length;
+
+  const honors = useMemo(
+    () =>
+      computeCitizenHonorsSnapshot({
+        citizenName:
+          displayAlias || user?.displayName || "Bengaluru Citizen Steward",
+        ward: "Bengaluru Urban",
+        meritPoints: civicPoints,
+        verifiedFixes: resolvedCount,
+      }),
+    [civicPoints, displayAlias, resolvedCount, user?.displayName]
+  );
+
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     await saveProfilePreferences({
@@ -121,15 +136,24 @@ export function ProfileWorkspace() {
     setRefreshing(true);
     try {
       await refreshProfile();
-      const [latestReports, latestRedemptions] = await Promise.all([
-        fetchMyReports(user.uid),
-        fetchMyRewardRedemptions(user.uid).catch(() => []),
-      ]);
+      const latestReports = await fetchMyReports(user.uid);
       setReports(latestReports);
-      setRedemptions(latestRedemptions);
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const handleOpenCertificate = (milestone: CertificateMilestone) => {
+    setActiveCertificate({
+      recipientName: honors.citizenName,
+      ward: honors.ward,
+      verifiedFixes: Math.max(honors.verifiedFixes, milestone.requiredFixes),
+      milestoneLevel: milestone.level,
+      milestoneTitle: milestone.title,
+      certificateId: milestone.certificateId,
+      issuedDate: formatCertificateIssueDate(),
+      meritPoints: honors.meritPoints,
+    });
   };
 
   if (!authReady) {
@@ -141,45 +165,42 @@ export function ProfileWorkspace() {
       <div className="mt-6">
         <EmptyState
           icon={<User size={20} aria-hidden="true" />}
-          title="Sign in to view your CivicPoints, Level Badge & reports"
-          description="Sign in with your CivicSnap account to track your CivicPoints balance (+10 Accepted, +25 Resolved), unlock Street Watcher / Eco Warrior / City Guardian badges, and redeem local merchant rewards."
+          title="Sign in to view your State Civic Honors, Certificates & Rank"
+          description="Sign in with your CivicSnap account to track your Civic Merit Points, auto-unlock official Bengaluru Urban Digital Merit Certificates every 5 verified fixes, and compete for the Chief Minister's Annual Civic Champions Award."
           primaryAction={{ label: "Sign In", href: "/login?next=%2Fprofile" }}
           secondaryAction={{
-            label: "Create Account",
-            href: "/signup?next=%2Fprofile",
+            label: "Preview Civic Honors",
+            href: "/rewards",
           }}
         />
       </div>
     );
   }
 
-  const civicPoints = profile?.civicPoints ?? 0;
-  const acceptedCount =
-    profile?.acceptedReportsCount ??
-    reports.filter((r) => r.reviewState === "accepted").length;
-  const resolvedCount =
-    profile?.resolvedReportsCount ??
-    reports.filter(
-      (r) => r.reviewState === "accepted" && r.status === "resolved"
-    ).length;
-  const levelBadge = getCivicLevelBadge(civicPoints);
+  const unlockedCertificates = honors.certificates.filter((c) => c.unlocked);
 
   return (
     <div className="mt-6 space-y-6">
-      {/* CivicPoints & Level Badge Hero Card */}
+      {/* Merit Standing & State Civic Honors Hero Card */}
       <section
-        aria-label="CivicPoints and Level Badge"
-        className="rounded-[20px] border border-slate-200 bg-white p-6"
+        aria-label="Civic Merit Standing and State Honors"
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
       >
         <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-3">
-              <CivicBadgeChip badge={levelBadge} size="md" />
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900">
+                <Crown size={13} aria-hidden="true" />
+                <span>{honors.currentBadge.title}</span>
+              </span>
+              <span className="font-mono text-xs font-semibold text-slate-600">
+                Rank #{honors.citywideRank} (Bengaluru Wide)
+              </span>
               <button
                 type="button"
                 onClick={() => void handleRefreshPoints()}
                 disabled={refreshing}
-                className="inline-flex min-h-[34px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                className="inline-flex min-h-[34px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
               >
                 <RefreshCw
                   size={13}
@@ -190,22 +211,22 @@ export function ProfileWorkspace() {
               </button>
             </div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">
-              {levelBadge.tagline} Earn{" "}
+              {honors.currentBadge.description} Earn{" "}
               <strong className="font-semibold text-slate-900">
                 +{POINTS_PER_ACCEPTED_REPORT} pts
               </strong>{" "}
-              for every Accepted report and{" "}
+              for accepted reports and{" "}
               <strong className="font-semibold text-slate-900">
                 +{POINTS_PER_RESOLVED_REPORT} pts
               </strong>{" "}
-              for every Resolved report.
+              on AI-verified resolution toward Annual CM Standings.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
             <div className="rounded-2xl border border-blue-200 bg-blue-50/70 px-5 py-3.5 text-left">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#2563EB]">
-                CivicPoints Balance
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">
+                Civic Merit Points
               </p>
               <p className="mt-0.5 font-mono text-3xl font-bold tabular-nums text-slate-900">
                 {civicPoints}{" "}
@@ -216,77 +237,74 @@ export function ProfileWorkspace() {
             <div className="flex flex-col gap-2">
               <Link
                 href="/rewards"
-                className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1D4ED8] whitespace-nowrap"
+                className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 whitespace-nowrap"
               >
-                <Gift size={14} aria-hidden="true" />
-                <span>Open Rewards Store</span>
+                <Award size={14} aria-hidden="true" />
+                <span>Open Civic Honors</span>
               </Link>
               <Link
-                href="/leaderboard"
+                href="/ward-wars"
                 className="inline-flex min-h-[38px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 whitespace-nowrap"
               >
                 <Trophy size={14} aria-hidden="true" />
-                <span>View Leaderboard</span>
+                <span>View CM Race</span>
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Next Tier Progress Bar & Tier Breakdown */}
+        {/* Top 5 CM Finalist Progress Bar & Badges Summary */}
         <div className="mt-6 border-t border-slate-100 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-semibold text-slate-700">
-              {levelBadge.nextTierLabel
-                ? `${levelBadge.pointsToNext} more pts to reach ${levelBadge.nextTierLabel}`
-                : "Maximum civic tier unlocked — Gold (City Guardian)"}
+            <span className="font-semibold text-slate-800">
+              {honors.isTop5Finalist
+                ? "Qualified inside the Top 5 CM Finalist Zone!"
+                : `${honors.pointsToTop5} points to enter the Top 5 CM Finalist Zone`}
             </span>
             <span className="font-mono font-semibold text-slate-500">
-              {acceptedCount} accepted · {resolvedCount} resolved
+              {acceptedCount} accepted · {resolvedCount} verified fixes ·{" "}
+              {unlockedCertificates.length} certificates unlocked
             </span>
           </div>
           <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#2563EB] to-[#10B981] transition-all"
-              style={{ width: `${levelBadge.progressPercent}%` }}
+              className="h-full rounded-full bg-gradient-to-r from-blue-600 to-amber-500 transition-all"
+              style={{ width: `${honors.top5ProgressPercent}%` }}
             />
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {BADGE_TIERS_GUIDE.map((item) => {
-              const isCurrent =
-                item.label.toLowerCase() === levelBadge.tier;
-              return (
-                <div
-                  key={item.label}
-                  className={`rounded-xl border px-3.5 py-2.5 text-xs ${
-                    isCurrent
-                      ? "border-[#2563EB] bg-blue-50/50 text-slate-900"
-                      : "border-slate-200 bg-slate-50/60 text-slate-600"
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-semibold">
-                    <span>
-                      {item.label} · {item.title}
-                    </span>
-                    {isCurrent && (
-                      <span className="text-[11px] font-bold text-[#2563EB]">
-                        Current
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 font-mono text-[11px] text-slate-500">
-                    {item.range}
-                  </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {honors.badges.map((badge) => (
+              <div
+                key={badge.id}
+                className={`rounded-xl border px-3.5 py-2.5 text-xs ${
+                  badge.unlocked
+                    ? "border-blue-200 bg-blue-50/50 text-slate-900"
+                    : "border-slate-200 bg-slate-50/70 text-slate-500"
+                }`}
+              >
+                <div className="flex items-center justify-between font-semibold">
+                  <span className="truncate">{badge.title}</span>
+                  {badge.unlocked && (
+                    <CheckCircle2
+                      size={13}
+                      className="shrink-0 text-emerald-600"
+                      aria-hidden="true"
+                    />
+                  )}
                 </div>
-              );
-            })}
+                <p className="mt-0.5 font-mono text-[11px] text-slate-500">
+                  {badge.requirementLabel}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-12">
-        {/* Preferences Panel */}
-        <section className="rounded-[18px] border border-slate-200 bg-white p-6 lg:col-span-5">
+        {/* Preferences & Digital Certificates Panel */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-5">
           <h2 className="text-base font-semibold text-slate-900">
             Profile preferences
           </h2>
@@ -301,7 +319,7 @@ export function ProfileWorkspace() {
                 htmlFor="profile-alias"
                 className="mb-1.5 block text-xs font-medium text-slate-700"
               >
-                Display alias
+                Display alias (printed on Merit Certificates)
               </label>
               <input
                 id="profile-alias"
@@ -321,14 +339,14 @@ export function ProfileWorkspace() {
                 type="checkbox"
                 checked={optInInput}
                 onChange={(e) => setOptInInput(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-slate-300 text-[#2563EB]"
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
               />
               <label
                 htmlFor="profile-optin"
                 className="text-xs leading-5 text-slate-600"
               >
-                Show my alias, Level Badge, and CivicPoints on the public
-                leaderboard (opt-in only).
+                Show my alias, State Badge, and Civic Merit Points on the
+                public Annual CM Leaderboard (opt-in only).
               </label>
             </div>
 
@@ -354,7 +372,7 @@ export function ProfileWorkspace() {
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-60"
+              className="inline-flex min-h-[42px] w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
             >
               {busy ? (
                 <Loader2
@@ -372,48 +390,60 @@ export function ProfileWorkspace() {
               type="button"
               onClick={() => void signOutUser()}
               disabled={busy}
-              className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              className="inline-flex min-h-[42px] w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
               <LogOut size={15} aria-hidden="true" />
               <span>Sign Out</span>
             </button>
           </form>
 
-          {redemptions.length > 0 && (
-            <div className="mt-6 border-t border-slate-100 pt-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Recent Reward Vouchers ({redemptions.length})
-                </h3>
-                <Link
-                  href="/rewards"
-                  className="text-xs font-semibold text-[#2563EB] hover:underline"
-                >
-                  View Store
-                </Link>
-              </div>
+          {/* Automated Digital Merit Certificates */}
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Digital Merit Certificates ({unlockedCertificates.length})
+              </h3>
+              <Link
+                href="/rewards"
+                className="text-xs font-semibold text-blue-600 hover:underline"
+              >
+                All Milestones
+              </Link>
+            </div>
+            {unlockedCertificates.length > 0 ? (
               <ul className="mt-3 space-y-2">
-                {redemptions.slice(0, 3).map((item) => (
+                {unlockedCertificates.map((cert) => (
                   <li
-                    key={item.id}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs"
+                    key={cert.level}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/50 px-3 py-2.5 text-xs"
                   >
-                    <div>
-                      <p className="font-semibold text-slate-900">
-                        {item.rewardTitle}
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900">
+                        Level {cert.level} ({cert.requiredFixes} Verified Fixes)
                       </p>
                       <p className="font-mono text-[11px] text-slate-500">
-                        {item.couponCode}
+                        {cert.certificateId}
                       </p>
                     </div>
-                    <span className="font-mono font-semibold text-slate-700">
-                      -{item.pointsSpent} pts
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCertificate(cert)}
+                      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700"
+                    >
+                      <FileCheck2 size={12} aria-hidden="true" />
+                      <span>View</span>
+                    </button>
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
+            ) : (
+              <p className="mt-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-600">
+                {resolvedCount}/5 verified fixes completed. Your Level 1
+                Official Digital Civic Merit Certificate unlocks automatically
+                at 5 verified fixes.
+              </p>
+            )}
+          </div>
         </section>
 
         {/* Submitted Reports Panel */}
@@ -424,13 +454,13 @@ export function ProfileWorkspace() {
                 Your Submitted Reports ({reports.length})
               </h2>
               <p className="text-xs text-slate-500">
-                Private photos and optional coordinates remain visible only to
-                you and authorised CivicSnap project admins.
+                Private photos and coordinates remain visible only to you and
+                authorised CivicSnap staff reviewers.
               </p>
             </div>
             <Link
               href="/report"
-              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl bg-[#2563EB] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#1D4ED8]"
+              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
             >
               <Camera size={14} aria-hidden="true" />
               <span>New Report</span>
@@ -450,9 +480,12 @@ export function ProfileWorkspace() {
             <EmptyState
               icon={<Award size={20} aria-hidden="true" />}
               title="No reports submitted yet"
-              description="Snap a local civic issue to submit your first report on CivicSnap and start earning CivicPoints."
+              description="Snap a local civic issue to file your first verified audit and begin earning Merit Points toward State Civic Honors."
               primaryAction={{ label: "Report an Issue", href: "/report" }}
-              secondaryAction={{ label: "Explore Rewards", href: "/rewards" }}
+              secondaryAction={{
+                label: "Explore Civic Honors",
+                href: "/rewards",
+              }}
             />
           ) : (
             <ul className="space-y-3">
@@ -467,7 +500,7 @@ export function ProfileWorkspace() {
                     </span>
                     <div className="flex items-center gap-2">
                       {report.pointsAwarded > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-0.5 font-mono text-xs font-semibold text-[#2563EB]">
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-0.5 font-mono text-xs font-semibold text-blue-700">
                           <Sparkles size={11} aria-hidden="true" />
                           +{report.pointsAwarded} pts
                         </span>
@@ -500,6 +533,11 @@ export function ProfileWorkspace() {
           )}
         </section>
       </div>
+
+      <CertificateModal
+        certificate={activeCertificate}
+        onClose={() => setActiveCertificate(null)}
+      />
     </div>
   );
 }

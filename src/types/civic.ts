@@ -180,28 +180,62 @@ export interface CivicLevelBadgeInfo {
   tagline: string;
 }
 
-export interface RewardItem {
-  id: "gym-15-off" | "cafe-free-coffee" | "grocery-10-off";
+export type StateCivicBadgeId =
+  | "ward-scout"
+  | "state-urban-sentinel"
+  | "state-infrastructure-guardian"
+  | "national-civic-vanguard"
+  | "cm-civic-laureate";
+
+export interface StateCivicBadge {
+  id: StateCivicBadgeId;
+  level: 1 | 2 | 3 | 4 | 5;
   title: string;
-  merchantCategory: string;
+  tierScope: "Ward Level" | "State Level" | "National Level" | "Annual CM Podium";
+  requirementLabel: string;
+  minVerifiedFixes: number | null;
+  top5Only?: boolean;
   description: string;
-  pointsCost: 100 | 150 | 200;
-  terms: string;
-  codePrefix: string;
-  validityMinutes: number;
+  unlocked: boolean;
+  fixesRemaining: number;
 }
 
-export interface RewardRedemptionRecord {
-  id: string;
-  userId: string;
-  rewardId: RewardItem["id"];
-  rewardTitle: string;
-  pointsSpent: number;
-  terms: string;
-  couponCode: string;
-  createdAtIso: string;
-  expiresAtMs: number;
-  isDemoPreview?: boolean;
+export interface CertificateMilestone {
+  level: number;
+  requiredFixes: number;
+  title: string;
+  subtitle: string;
+  unlocked: boolean;
+  completedFixes: number;
+  progressPercent: number;
+  certificateId: string;
+}
+
+export interface CivicCertificateData {
+  recipientName: string;
+  ward: string;
+  verifiedFixes: number;
+  milestoneLevel: number;
+  milestoneTitle: string;
+  certificateId: string;
+  issuedDate: string;
+  meritPoints: number;
+}
+
+export interface CitizenHonorsSnapshot {
+  citizenName: string;
+  ward: string;
+  meritPoints: number;
+  verifiedFixes: number;
+  citywideRank: number;
+  top5ThresholdPoints: number;
+  pointsToTop5: number;
+  top5ProgressPercent: number;
+  isTop5Finalist: boolean;
+  currentBadge: StateCivicBadge;
+  badges: StateCivicBadge[];
+  certificates: CertificateMilestone[];
+  unlockedCertificateCount: number;
 }
 
 export interface ContributorProfile {

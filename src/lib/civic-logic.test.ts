@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildAuthHref,
-  canRedeemReward,
   computeAdminReportStats,
   computeCivicPointsDelta,
   computeDashboardMetrics,
@@ -10,8 +9,6 @@ import {
   deriveLeaderboard,
   filterAndSortIssues,
   filterIssuesByDateRange,
-  formatCountdownSeconds,
-  generateUniqueCouponCode,
   getCivicLevelBadge,
   getPendingAgeLabel,
   isAuthorizedAdminEmail,
@@ -19,11 +16,19 @@ import {
   paginateIssues,
   parseAdminEmailList,
   parseFirestoreSubmitError,
-  REWARD_CATALOG,
   sanitizeRedirectPath,
   validateAuthInput,
   validatePhotoFileMeta,
 } from "./civic-logic";
+import {
+  buildCertificateHtmlDocument,
+  buildCertificateMilestones,
+  buildLinkedInShareUrl,
+  CM_ANNUAL_AWARD_PERKS,
+  computeCitizenHonorsSnapshot,
+  evaluateStateCivicBadges,
+  generateCertificateId,
+} from "./civic-honors";
 import { DEMO_ISSUES, DEMO_PROFILES, DEMO_REFERENCE_DATE } from "./demo-data";
 import {
   buildBeforeAfterVerificationPrompt,
@@ -272,33 +277,63 @@ test("computeAdminReportStats calculates Total, Pending, In Progress, and Resolv
   });
 });
 
-test("Rewards Store catalog, eligibility, coupon generator, and 15-minute countdown formatter work deterministically", () => {
-  assert.equal(REWARD_CATALOG.length, 3);
-  assert.deepEqual(
-    REWARD_CATALOG.map((r) => [r.title, r.pointsCost, r.codePrefix]),
-    [
-      ["Third Wave Coffee — 20% OFF", 100, "TWC20"],
-      ["Cult.fit — 1-Day Free Pass", 150, "CULT1D"],
-      ["Zepto — ₹100 OFF", 200, "ZEP100"],
-    ]
-  );
+test("State Civic Honors snapshot, 5-tier badges, automated certificates, LinkedIn share URL, and HTML export work deterministically", () => {
+  assert.equal(CM_ANNUAL_AWARD_PERKS.length, 4);
 
-  assert.deepEqual(canRedeemReward(80, REWARD_CATALOG[0]), {
-    eligible: false,
-    shortfall: 20,
+  const certId1 = generateCertificateId("Aarav Sharma", 1, 2025);
+  const certId2 = generateCertificateId("Aarav Sharma", 1, 2025);
+  assert.equal(certId1, certId2);
+  assert.match(certId1, /^CS-BLR-2025-V\d{4}$/);
+
+  const snapshot = computeCitizenHonorsSnapshot({
+    citizenName: "Aarav Sharma",
+    ward: "Indiranagar",
+    meritPoints: 750,
+    verifiedFixes: 7,
+    citywideRank: 12,
   });
-  assert.deepEqual(canRedeemReward(100, REWARD_CATALOG[0]), {
-    eligible: true,
-    shortfall: 0,
-  });
+  assert.equal(snapshot.meritPoints, 750);
+  assert.equal(snapshot.citywideRank, 12);
+  assert.equal(snapshot.pointsToTop5, 350);
+  assert.equal(snapshot.isTop5Finalist, false);
+  assert.equal(snapshot.currentBadge.title, "State Urban Sentinel");
+  assert.equal(snapshot.unlockedCertificateCount, 1);
 
-  const code = generateUniqueCouponCode("TWC20");
-  assert.match(code, /^CS-TWC20-[A-Z0-9]{6}$/);
+  const badges = evaluateStateCivicBadges(7, 12);
+  assert.equal(badges.length, 5);
+  assert.equal(badges[0].unlocked, true); // Ward Scout
+  assert.equal(badges[1].unlocked, true); // State Urban Sentinel
+  assert.equal(badges[2].unlocked, false); // State Infrastructure Guardian
+  assert.equal(badges[2].fixesRemaining, 8);
+  assert.equal(badges[4].unlocked, false); // CM Civic Laureate (Top 5 only)
 
-  assert.equal(formatCountdownSeconds(900), "15:00");
-  assert.equal(formatCountdownSeconds(59), "00:59");
-  assert.equal(formatCountdownSeconds(0), "00:00");
-  assert.equal(formatCountdownSeconds(-10), "00:00");
+  const top5Badges = evaluateStateCivicBadges(28, 2);
+  assert.equal(top5Badges[4].unlocked, true);
+
+  const milestones = buildCertificateMilestones("Aarav Sharma", 7, 2025);
+  assert.equal(milestones[0].unlocked, true);
+  assert.equal(milestones[1].unlocked, false);
+  assert.equal(milestones[1].completedFixes, 7);
+
+  const sampleCert = {
+    recipientName: "Aarav Sharma",
+    ward: "Indiranagar",
+    verifiedFixes: 7,
+    milestoneLevel: 1,
+    milestoneTitle: "Official Civic Merit Certificate (Level 1: 5 Verified Fixes)",
+    certificateId: certId1,
+    issuedDate: "23 November 2026",
+    meritPoints: 750,
+  };
+  const linkedInUrl = buildLinkedInShareUrl(sampleCert);
+  assert.match(linkedInUrl, /^https:\/\/www\.linkedin\.com\/feed\/\?shareActive=true&text=/);
+  assert.ok(decodeURIComponent(linkedInUrl).includes(certId1));
+
+  const html = buildCertificateHtmlDocument(sampleCert);
+  assert.ok(html.includes("GOVERNMENT OF KARNATAKA"));
+  assert.ok(html.includes("CERTIFICATE OF CIVIC MERIT"));
+  assert.ok(html.includes("Aarav Sharma"));
+  assert.ok(html.includes(certId1));
 });
 
 test("validatePhotoFileMeta supports mobile MIME types, AVIF/JFIF/octet-stream, blocks SVG/PDF, and enforces size cap", () => {
