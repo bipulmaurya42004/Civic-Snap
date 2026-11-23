@@ -21,14 +21,17 @@ import {
   MapPin,
   Mic,
   MicOff,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
   Siren,
+  Smartphone,
   Sparkles,
   Square,
   Trash2,
   Upload,
   Wrench,
+  X,
 } from "lucide-react";
 import {
   ISSUE_CATEGORIES,
@@ -138,13 +141,19 @@ export function ReportComposerClient() {
   const { user, displayAlias, signInWithGoogle, busy: authBusy } =
     useFirebaseAuth();
 
-  // Photo state
+  // Photo & Live Web Camera state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [isSamplePhoto, setIsSamplePhoto] = useState(false);
   const [compressedKb, setCompressedKb] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">(
+    "environment"
+  );
 
   // Details state
   const [category, setCategory] = useState<IssueCategory>("pothole");
@@ -164,7 +173,7 @@ export function ReportComposerClient() {
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
 
-  // Hinglish Voice state
+  // Hinglish Voice & Direct Field Dictation state
   const [speechSupported, setSpeechSupported] = useState(true);
   const [voiceLang, setVoiceLang] = useState<"hi-IN" | "en-IN">("hi-IN");
   const [listening, setListening] = useState(false);
@@ -173,6 +182,11 @@ export function ReportComposerClient() {
   const [voiceInterim, setVoiceInterim] = useState("");
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [dictatingField, setDictatingField] = useState<
+    "title" | "description" | null
+  >(null);
+  const [fieldVoiceInterim, setFieldVoiceInterim] = useState("");
+  const [fieldVoiceError, setFieldVoiceError] = useState<string | null>(null);
 
   // AI Engineering Audit state (default realistic Bengaluru baseline chip until photo audited)
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
@@ -186,8 +200,14 @@ export function ReportComposerClient() {
   const [submitted, setSubmitted] = useState<SubmittedSummary | null>(null);
 
   const recognitionRef = useRef<SpeechRecognitionInstanceLike | null>(null);
+  const fieldRecognitionRef = useRef<SpeechRecognitionInstanceLike | null>(null);
+  const fieldBaseValueRef = useRef("");
   const finalTranscriptRef = useRef("");
   const latestTranscriptRef = useRef("");
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileCameraInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setSpeechSupported(Boolean(getSpeechRecognitionCtor()));
@@ -199,8 +219,28 @@ export function ReportComposerClient() {
           // Ignore teardown errors
         }
       }
+      if (fieldRecognitionRef.current) {
+        try {
+          fieldRecognitionRef.current.abort();
+        } catch {
+          // Ignore teardown errors
+        }
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (cameraOpen && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      void videoRef.current.play().catch(() => {
+        // Autoplay may wait for gesture on strict browsers
+      });
+    }
+  }, [cameraOpen]);
 
   useEffect(() => {
     return () => {
@@ -275,9 +315,114 @@ export function ReportComposerClient() {
     }
   };
 
+  const stopCameraStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraOpen(false);
+    setCameraStarting(false);
+  };
+
+  const startLiveCamera = async (
+    targetFacing: "environment" | "user" = facingMode
+  ) => {
+    setPhotoError(null);
+    setCameraError(null);
+    stopCameraStream();
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      setCameraError(
+        "Live browser camera is unavailable on this device/context. Tap Phone Camera or Browse / Gallery to upload your photo."
+      );
+      return;
+    }
+
+    setCameraStarting(true);
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch {
+        // Fallback for desktops/laptops that reject facingMode constraint
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
+      streamRef.current = stream;
+      setFacingMode(targetFacing);
+      setCameraOpen(true);
+    } catch {
+      setCameraError(
+        "Camera permission was blocked or no webcam was found. Allow camera access or use Phone Camera / Gallery upload."
+      );
+    } finally {
+      setCameraStarting(false);
+    }
+  };
+
+  const handleSwitchCamera = () => {
+    const nextFacing = facingMode === "environment" ? "user" : "environment";
+    void startLiveCamera(nextFacing);
+  };
+
+  const handleCaptureLivePhoto = () => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+      setCameraError("Camera preview is still warming up. Please try again in a second.");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      setCameraError("Could not capture camera frame. Please upload a photo instead.");
+      return;
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setCameraError("Could not save captured photo. Please try again.");
+          return;
+        }
+        const capturedFile = new File(
+          [blob],
+          `civicsnap-live-${Date.now()}.jpg`,
+          { type: "image/jpeg" }
+        );
+        stopCameraStream();
+        void processSelectedFile(capturedFile);
+      },
+      "image/jpeg",
+      0.88
+    );
+  };
+
   const handleFileInput = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
+    stopCameraStream();
     void processSelectedFile(file);
   };
 
@@ -286,6 +431,7 @@ export function ReportComposerClient() {
     setIsDragging(false);
     const file = event.dataTransfer.files?.[0];
     if (file) {
+      stopCameraStream();
       void processSelectedFile(file);
     }
   };
@@ -324,6 +470,7 @@ export function ReportComposerClient() {
   };
 
   const handleRemovePhoto = () => {
+    stopCameraStream();
     if (photoPreviewUrl && photoPreviewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(photoPreviewUrl);
     }
@@ -332,6 +479,7 @@ export function ReportComposerClient() {
     setIsSamplePhoto(false);
     setCompressedKb(null);
     setPhotoError(null);
+    setCameraError(null);
     setAuditNotice(null);
   };
 
@@ -591,6 +739,115 @@ export function ReportComposerClient() {
       setListening(false);
       setVoiceError(
         "Could not start microphone. Type or select a Hinglish phrase below."
+      );
+    }
+  };
+
+  const handleToggleFieldDictation = (target: "title" | "description") => {
+    setFieldVoiceError(null);
+
+    if (dictatingField === target) {
+      try {
+        fieldRecognitionRef.current?.stop();
+      } catch {
+        setDictatingField(null);
+        setFieldVoiceInterim("");
+      }
+      return;
+    }
+
+    // Stop any other active mic session first
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {
+        // Ignore
+      }
+      recognitionRef.current = null;
+      setListening(false);
+    }
+    if (fieldRecognitionRef.current) {
+      try {
+        fieldRecognitionRef.current.abort();
+      } catch {
+        // Ignore
+      }
+      fieldRecognitionRef.current = null;
+    }
+
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) {
+      setSpeechSupported(false);
+      setFieldVoiceError(
+        "Voice typing is not supported in this browser. You can type directly or use the Hinglish input box above."
+      );
+      return;
+    }
+
+    try {
+      const recognition = new Ctor();
+      recognition.lang = voiceLang;
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      const maxLen = target === "title" ? 120 : 800;
+      const baseText = (target === "title" ? title : description).trim();
+      fieldBaseValueRef.current = baseText;
+      let committedChunk = "";
+
+      recognition.onresult = (event) => {
+        let interimChunk = "";
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const spoken = result?.[0]?.transcript?.trim() ?? "";
+          if (!spoken) continue;
+          if (result?.isFinal) {
+            committedChunk = `${committedChunk} ${spoken}`.trim();
+          } else {
+            interimChunk = `${interimChunk} ${spoken}`.trim();
+          }
+        }
+
+        const spokenCombined = `${committedChunk} ${interimChunk}`.trim();
+        setFieldVoiceInterim(interimChunk);
+        const merged = [fieldBaseValueRef.current, spokenCombined]
+          .filter(Boolean)
+          .join(" ")
+          .slice(0, maxLen);
+
+        if (target === "title") {
+          setTitle(merged);
+        } else {
+          setDescription(merged);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        setDictatingField(null);
+        setFieldVoiceInterim("");
+        fieldRecognitionRef.current = null;
+        if (event.error !== "aborted") {
+          setFieldVoiceError(
+            "Microphone permission blocked or unavailable for voice typing. Allow mic access in browser settings or type directly."
+          );
+        }
+      };
+
+      recognition.onend = () => {
+        setDictatingField(null);
+        setFieldVoiceInterim("");
+        fieldRecognitionRef.current = null;
+      };
+
+      fieldRecognitionRef.current = recognition;
+      setDictatingField(target);
+      recognition.start();
+    } catch {
+      setDictatingField(null);
+      setFieldVoiceInterim("");
+      setFieldVoiceError(
+        "Could not start voice typing right now. Please type directly or try again."
       );
     }
   };
@@ -859,6 +1116,25 @@ export function ReportComposerClient() {
               </span>
             </div>
 
+            {/* Always-mounted file & phone camera inputs so any button can trigger them reliably */}
+            <input
+              ref={fileInputRef}
+              id="civic-photo-upload"
+              type="file"
+              accept="image/*,.heic,.heif,.avif,.jfif,.webp,.bmp,.tif,.tiff"
+              onChange={handleFileInput}
+              className="sr-only"
+            />
+            <input
+              ref={mobileCameraInputRef}
+              id="civic-phone-camera-upload"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileInput}
+              className="sr-only"
+            />
+
             {photoPreviewUrl ? (
               <div className="mt-4 space-y-3">
                 <div className="relative h-52 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
@@ -886,22 +1162,79 @@ export function ReportComposerClient() {
                   </button>
                 </div>
 
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleRunPhotoAudit()}
+                    disabled={analyzingPhoto}
+                    className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50/80 px-3.5 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100/70 disabled:opacity-60"
+                  >
+                    {analyzingPhoto ? (
+                      <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Sparkles size={14} aria-hidden="true" />
+                    )}
+                    <span>
+                      {analyzingPhoto ? "Analyzing..." : "Gemini AI Audit"}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleRemovePhoto();
+                      void startLiveCamera();
+                    }}
+                    className="inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
+                  >
+                    <Camera size={14} className="text-blue-600" aria-hidden="true" />
+                    <span>Retake Live Photo</span>
+                  </button>
+                </div>
+              </div>
+            ) : cameraOpen ? (
+              <div className="mt-4 space-y-3">
+                <div className="relative overflow-hidden rounded-xl border border-blue-200 bg-slate-900">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="h-56 w-full object-cover"
+                  />
+                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-slate-950/75 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-xs">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                    Live Web Camera
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCaptureLivePhoto}
+                    className="col-span-2 inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
+                  >
+                    <Camera size={15} aria-hidden="true" />
+                    <span>Click &amp; Capture Photo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSwitchCamera}
+                    aria-label="Switch front or back camera"
+                    className="inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
+                  >
+                    <RefreshCw size={14} aria-hidden="true" />
+                    <span>Flip</span>
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => void handleRunPhotoAudit()}
-                  disabled={analyzingPhoto}
-                  className="inline-flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100/70 disabled:opacity-60"
+                  onClick={stopCameraStream}
+                  className="inline-flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-all hover:bg-slate-100"
                 >
-                  {analyzingPhoto ? (
-                    <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Sparkles size={14} aria-hidden="true" />
-                  )}
-                  <span>
-                    {analyzingPhoto
-                      ? "Running Gemini Vision Engineering Audit..."
-                      : "Analyze Photo with Gemini AI"}
-                  </span>
+                  <X size={13} aria-hidden="true" />
+                  <span>Close Camera</span>
                 </button>
               </div>
             ) : (
@@ -914,7 +1247,7 @@ export function ReportComposerClient() {
                   }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={handleDrop}
-                  className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-7 text-center transition-colors ${
+                  className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors ${
                     isDragging
                       ? "border-blue-500 bg-blue-50/70"
                       : "border-slate-200 bg-slate-50/70 hover:border-blue-400 hover:bg-blue-50/30"
@@ -924,24 +1257,45 @@ export function ReportComposerClient() {
                     <Upload size={20} aria-hidden="true" />
                   </div>
                   <p className="mt-3 text-sm font-semibold text-slate-900">
-                    Drag &amp; drop issue photo or click to browse
+                    Drag &amp; drop issue photo or tap to browse
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    JPG, PNG, WEBP, HEIC · Automatically optimized under 100KB
+                    All photo formats supported (JPG, PNG, WEBP, HEIC, AVIF, JFIF) · Auto-optimized
                   </p>
-                  <input
-                    id="civic-photo-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileInput}
-                    className="sr-only"
-                  />
                 </label>
+
+                {/* Live Web Camera + Phone Camera + Gallery Controls */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={cameraStarting}
+                    onClick={() => void startLiveCamera("environment")}
+                    className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 disabled:opacity-60"
+                  >
+                    {cameraStarting ? (
+                      <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Camera size={14} aria-hidden="true" />
+                    )}
+                    <span>
+                      {cameraStarting ? "Starting Camera..." : "Open Live Camera"}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => mobileCameraInputRef.current?.click()}
+                    className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
+                  >
+                    <Smartphone size={14} className="text-blue-600" aria-hidden="true" />
+                    <span>Phone Camera / Gallery</span>
+                  </button>
+                </div>
 
                 <button
                   type="button"
                   onClick={handleLoadSamplePhoto}
-                  className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
+                  className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
                 >
                   <Sparkles size={13} className="text-blue-600" aria-hidden="true" />
                   <span>Load Sample Indiranagar Pothole Photo</span>
@@ -952,6 +1306,14 @@ export function ReportComposerClient() {
             {auditNotice && (
               <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                 {auditNotice}
+              </p>
+            )}
+            {cameraError && (
+              <p
+                role="alert"
+                className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"
+              >
+                {cameraError}
               </p>
             )}
             {photoError && (
@@ -1315,12 +1677,40 @@ export function ReportComposerClient() {
               </div>
 
               <div>
-                <label
-                  htmlFor="report-title"
-                  className="block text-xs font-semibold text-slate-700"
-                >
-                  Issue Title
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label
+                    htmlFor="report-title"
+                    className="block text-xs font-semibold text-slate-700"
+                  >
+                    Issue Title
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleFieldDictation("title")}
+                    aria-label={
+                      dictatingField === "title"
+                        ? "Stop voice typing for issue title"
+                        : "Dictate issue title by voice"
+                    }
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                      dictatingField === "title"
+                        ? "border-rose-300 bg-rose-50 text-rose-700"
+                        : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                    }`}
+                  >
+                    {dictatingField === "title" ? (
+                      <>
+                        <Square size={11} className="animate-pulse" aria-hidden="true" />
+                        <span>Stop Mic</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic size={12} aria-hidden="true" />
+                        <span>Voice Type Title</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <input
                   id="report-title"
                   type="text"
@@ -1330,15 +1720,49 @@ export function ReportComposerClient() {
                   placeholder="e.g., 100ft Road Severe Pothole near Chinmaya Mission Hospital"
                   className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
                 />
+                {dictatingField === "title" && (
+                  <p className="mt-1 text-[11px] font-medium text-rose-600">
+                    Listening for Title ({voiceLang})...{" "}
+                    {fieldVoiceInterim ? `"${fieldVoiceInterim}"` : "Speak clearly"}
+                  </p>
+                )}
               </div>
 
               <div>
-                <label
-                  htmlFor="report-description"
-                  className="block text-xs font-semibold text-slate-700"
-                >
-                  Issue Description
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label
+                    htmlFor="report-description"
+                    className="block text-xs font-semibold text-slate-700"
+                  >
+                    Issue Description
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleFieldDictation("description")}
+                    aria-label={
+                      dictatingField === "description"
+                        ? "Stop voice typing for issue description"
+                        : "Dictate issue description by voice"
+                    }
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                      dictatingField === "description"
+                        ? "border-rose-300 bg-rose-50 text-rose-700"
+                        : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                    }`}
+                  >
+                    {dictatingField === "description" ? (
+                      <>
+                        <Square size={11} className="animate-pulse" aria-hidden="true" />
+                        <span>Stop Mic</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic size={12} aria-hidden="true" />
+                        <span>Voice Type Description</span>
+                      </>
+                    )}
+                  </button>
+                </div>
                 <textarea
                   id="report-description"
                   rows={3}
@@ -1348,7 +1772,22 @@ export function ReportComposerClient() {
                   placeholder="Describe road hazard depth, nearby school/hospital landmarks, or traffic impact..."
                   className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
                 />
+                {dictatingField === "description" && (
+                  <p className="mt-1 text-[11px] font-medium text-rose-600">
+                    Listening for Description ({voiceLang})...{" "}
+                    {fieldVoiceInterim ? `"${fieldVoiceInterim}"` : "Speak clearly"}
+                  </p>
+                )}
               </div>
+
+              {fieldVoiceError && (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"
+                >
+                  {fieldVoiceError}
+                </p>
+              )}
 
               {formError && (
                 <p

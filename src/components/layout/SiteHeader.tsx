@@ -92,7 +92,7 @@ export function SiteHeader() {
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:gap-8 lg:px-8">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:gap-6 lg:px-8">
           {/* Zone 1: Brand Logo */}
           <Link
             href="/"
@@ -102,10 +102,10 @@ export function SiteHeader() {
             <CivicSnapLogo size="md" theme="light" />
           </Link>
 
-          {/* Zone 2: Center Nav Links with Motion layoutId indicator */}
+          {/* Zone 2: Center Nav Links (Always visible on md+ tablet/laptop/desktop) */}
           <nav
             aria-label="Primary navigation"
-            className="hidden lg:flex items-center gap-1"
+            className="hidden md:flex items-center gap-0.5 lg:gap-1"
           >
             {PRIMARY_NAV_ITEMS.map((item) => {
               const isActive = item.matchPrefixes.some(
@@ -116,7 +116,7 @@ export function SiteHeader() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative whitespace-nowrap shrink-0 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
+                  className={`relative whitespace-nowrap shrink-0 rounded-xl px-2.5 py-2 text-xs font-medium transition-colors lg:px-3.5 lg:text-sm ${
                     isActive
                       ? "text-blue-700 font-semibold"
                       : "text-slate-600 hover:text-slate-900"
@@ -193,7 +193,7 @@ export function SiteHeader() {
 
             <Link
               href="/report"
-              className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap shrink-0"
+              className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap shrink-0 sm:px-4 sm:text-sm"
             >
               <Camera size={15} aria-hidden="true" className="hidden sm:inline" />
               <span className="sm:hidden">Report</span>
@@ -217,6 +217,39 @@ export function SiteHeader() {
             </button>
           </div>
         </div>
+
+        {/* Mobile Top Navigation Strip (keeps Explore Issues, Leaderboard, Rewards Store, Dashboard always accessible at the top on phones) */}
+        <nav
+          aria-label="Mobile quick navigation"
+          className="flex md:hidden items-center gap-1 overflow-x-auto border-t border-slate-100 bg-slate-50/90 px-3 py-1.5"
+        >
+          {PRIMARY_NAV_ITEMS.map((item) => {
+            const isActive = item.matchPrefixes.some(
+              (prefix) =>
+                pathname === prefix || pathname.startsWith(`${prefix}/`)
+            );
+            return (
+              <Link
+                key={`mobile-${item.href}`}
+                href={item.href}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors ${
+                  isActive
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "text-slate-600 hover:bg-white hover:text-slate-900"
+                }`}
+              >
+                {item.isStaff && (
+                  <Shield
+                    size={12}
+                    aria-hidden="true"
+                    className={isActive ? "text-blue-100" : "text-slate-400"}
+                  />
+                )}
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
       </header>
 
       {/* Right-Edge Spring Slide-Over Drawer */}

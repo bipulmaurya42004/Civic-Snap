@@ -14,24 +14,36 @@ import {
   type RewardItem,
 } from "@/types/civic";
 
-export const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB
+export const MAX_PHOTO_BYTES = 25 * 1024 * 1024; // 25 MB raw (auto-compressed client-side <100KB)
 export const ALLOWED_PHOTO_MIME_TYPES = [
   "image/jpeg",
   "image/jpg",
+  "image/pjpeg",
   "image/png",
+  "image/x-png",
   "image/webp",
   "image/heic",
   "image/heif",
+  "image/avif",
+  "image/bmp",
   "image/gif",
+  "image/tiff",
 ] as const;
 export const ALLOWED_PHOTO_EXTENSIONS = [
   ".jpg",
   ".jpeg",
+  ".jfif",
+  ".pjpeg",
+  ".pjp",
   ".png",
   ".webp",
   ".heic",
   ".heif",
+  ".avif",
+  ".bmp",
   ".gif",
+  ".tif",
+  ".tiff",
 ] as const;
 export const POINTS_PER_ACCEPTED_REPORT = 10;
 export const POINTS_PER_RESOLVED_REPORT = 25;
@@ -453,17 +465,32 @@ export function validatePhotoFileMeta(file: {
   const normalizedType = (file.type || "").trim().toLowerCase();
   const normalizedName = (file.name || "").trim().toLowerCase();
 
-  const matchesMime = ALLOWED_PHOTO_MIME_TYPES.includes(
-    normalizedType as (typeof ALLOWED_PHOTO_MIME_TYPES)[number]
-  );
+  // Block SVG explicitly to prevent script/XSS injection via uploaded vector files
+  if (normalizedType === "image/svg+xml" || normalizedName.endsWith(".svg")) {
+    return {
+      valid: false,
+      error: "SVG vector files are not allowed. Please upload a camera photo (JPG, PNG, WebP, HEIC, AVIF).",
+    };
+  }
+
+  const isGenericImageMime = normalizedType.startsWith("image/");
+  const matchesMime =
+    isGenericImageMime ||
+    ALLOWED_PHOTO_MIME_TYPES.includes(
+      normalizedType as (typeof ALLOWED_PHOTO_MIME_TYPES)[number]
+    );
   const matchesExtension =
     normalizedName.length > 0 &&
     ALLOWED_PHOTO_EXTENSIONS.some((ext) => normalizedName.endsWith(ext));
+  const isUnknownOrOctetMime =
+    normalizedType === "" ||
+    normalizedType === "application/octet-stream" ||
+    normalizedType === "binary/octet-stream";
 
-  if (!matchesMime && !(normalizedType === "" && matchesExtension)) {
+  if (!matchesMime && !(isUnknownOrOctetMime && matchesExtension)) {
     return {
       valid: false,
-      error: "Please choose a JPEG, PNG, WebP, or HEIC image file.",
+      error: "Please select a valid photo file (JPG, PNG, WebP, HEIC, AVIF, or camera capture).",
     };
   }
   if (file.size <= 0) {
@@ -475,7 +502,7 @@ export function validatePhotoFileMeta(file: {
   if (file.size > MAX_PHOTO_BYTES) {
     return {
       valid: false,
-      error: "Image exceeds the 10 MB limit. Please pick a smaller photo.",
+      error: "Image exceeds the 25 MB limit. Please pick a smaller photo.",
     };
   }
   return { valid: true };

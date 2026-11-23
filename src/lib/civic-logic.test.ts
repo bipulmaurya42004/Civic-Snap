@@ -301,7 +301,7 @@ test("Rewards Store catalog, eligibility, coupon generator, and 15-minute countd
   assert.equal(formatCountdownSeconds(-10), "00:00");
 });
 
-test("validatePhotoFileMeta supports mobile MIME types, extension fallback, and 10 MB size cap", () => {
+test("validatePhotoFileMeta supports mobile MIME types, AVIF/JFIF/octet-stream, blocks SVG/PDF, and enforces size cap", () => {
   assert.equal(
     validatePhotoFileMeta({ type: "image/jpeg", size: 1024 * 500 }).valid,
     true
@@ -311,12 +311,28 @@ test("validatePhotoFileMeta supports mobile MIME types, extension fallback, and 
     true
   );
   assert.equal(
+    validatePhotoFileMeta({ type: "image/avif", size: 1024 * 600, name: "road.avif" }).valid,
+    true
+  );
+  assert.equal(
+    validatePhotoFileMeta({
+      type: "application/octet-stream",
+      size: 1024 * 450,
+      name: "IMG_20261122.jfif",
+    }).valid,
+    true
+  );
+  assert.equal(
     validatePhotoFileMeta({
       type: "",
       size: 1024 * 400,
       name: "IMG_20261122.JPG",
     }).valid,
     true
+  );
+  assert.equal(
+    validatePhotoFileMeta({ type: "image/svg+xml", size: 1024, name: "bad.svg" }).valid,
+    false
   );
   assert.equal(
     validatePhotoFileMeta({ type: "application/pdf", size: 1024 }).valid,
