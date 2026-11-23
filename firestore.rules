@@ -1,0 +1,501 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net — default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isBootstrapAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'bipulmaurya42004@gmail.com'
+        || request.auth.token.email == 'vedmindset@gmail.com'
+      );
+    }
+
+    function isAdmin() {
+      return isBootstrapAdmin() || (
+        isVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidCategory(cat) {
+      return cat in ['pothole', 'waste', 'streetlight', 'other'];
+    }
+
+    function isValidStatus(status) {
+      return status in ['pending', 'in_progress', 'resolved'];
+    }
+
+    function isValidReviewState(state) {
+      return state in ['unreviewed', 'accepted', 'duplicate', 'rejected'];
+    }
+
+    function isValidRewardCost(cost) {
+      return cost is int && cost in [100, 150, 200];
+    }
+
+    function isValidVerificationStatus(status) {
+      return status in ['unverified', 'verified', 'flagged'];
+    }
+
+    function isValidSafeImageUrl(url) {
+      return url is string && url.size() >= 6 && url.size() <= 2048 && url.matches('^(https://|/demo/).+$');
+    }
+
+    // 3. Entity Validation Blueprints (synchronized with firebase-blueprint.json)
+    function isValidUserPrivateProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'alias', 'leaderboardOptIn', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'alias', 'email', 'leaderboardOptIn',
+          'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount',
+          'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && isValidId(data.uid)
+        && data.alias is string && data.alias.size() >= 2 && data.alias.size() <= 40
+        && (!('email' in data) || (data.email is string && data.email.size() <= 254))
+        && data.leaderboardOptIn is bool
+        && (!('civicPoints' in data) || (data.civicPoints is int && data.civicPoints >= 0 && data.civicPoints <= 1000000))
+        && (!('acceptedReportsCount' in data) || (data.acceptedReportsCount is int && data.acceptedReportsCount >= 0 && data.acceptedReportsCount <= 100000))
+        && (!('resolvedReportsCount' in data) || (data.resolvedReportsCount is int && data.resolvedReportsCount >= 0 && data.resolvedReportsCount <= 100000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPublicProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'alias', 'leaderboardOptIn', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'alias', 'leaderboardOptIn',
+          'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount',
+          'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && isValidId(data.uid)
+        && data.alias is string && data.alias.size() >= 2 && data.alias.size() <= 40
+        && data.leaderboardOptIn is bool
+        && (!('civicPoints' in data) || (data.civicPoints is int && data.civicPoints >= 0 && data.civicPoints <= 1000000))
+        && (!('acceptedReportsCount' in data) || (data.acceptedReportsCount is int && data.acceptedReportsCount >= 0 && data.acceptedReportsCount <= 100000))
+        && (!('resolvedReportsCount' in data) || (data.resolvedReportsCount is int && data.resolvedReportsCount >= 0 && data.resolvedReportsCount <= 100000))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRewardRedemption(data, userId, redemptionId) {
+      return data.keys().hasAll([
+          'id', 'userId', 'rewardId', 'rewardTitle', 'pointsSpent',
+          'terms', 'couponCode', 'expiresAtMs', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'userId', 'rewardId', 'rewardTitle', 'pointsSpent',
+          'terms', 'couponCode', 'expiresAtMs', 'createdAt'
+        ])
+        && data.id is string && data.id == redemptionId && data.id.size() >= 3 && isValidId(data.id)
+        && data.userId is string && data.userId == userId && isValidId(data.userId)
+        && data.rewardId is string && data.rewardId in ['gym-15-off', 'cafe-free-coffee', 'grocery-10-off']
+        && data.rewardTitle is string && data.rewardTitle.size() >= 3 && data.rewardTitle.size() <= 80
+        && isValidRewardCost(data.pointsSpent)
+        && data.terms is string && data.terms.size() >= 3 && data.terms.size() <= 120
+        && data.couponCode is string && data.couponCode.size() >= 8 && data.couponCode.size() <= 32 && data.couponCode.matches('^[A-Z0-9\\-]+$')
+        && data.expiresAtMs is int && data.expiresAtMs > 0
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPrivateReport(data, reportId) {
+      return data.keys().hasAll([
+          'id', 'reporterId', 'title', 'category', 'description',
+          'locality', 'status', 'reviewState', 'publicApproved',
+          'hasPhoto', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'reporterId', 'title', 'category', 'description',
+          'locality', 'status', 'reviewState', 'publicApproved',
+          'hasPhoto', 'pointsAwarded', 'photoStoragePath',
+          'beforeImageURL', 'afterImageURL', 'verificationStatus', 'verificationReason',
+          'surroundingLandmarks', 'materialEstimate', 'socialImpactScore', 'economicCostOfDelay',
+          'privateLat', 'privateLng', 'detectedAddress', 'highPriorityZone',
+          'duplicateOfId', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == reportId && data.id.size() >= 3 && isValidId(data.id)
+        && data.reporterId is string && isValidId(data.reporterId)
+        && data.title is string && data.title.size() >= 5 && data.title.size() <= 120
+        && data.category is string && isValidCategory(data.category)
+        && data.description is string && data.description.size() >= 10 && data.description.size() <= 600
+        && data.locality is string && data.locality.size() >= 2 && data.locality.size() <= 80
+        && data.status is string && isValidStatus(data.status)
+        && data.reviewState is string && isValidReviewState(data.reviewState)
+        && data.publicApproved is bool
+        && data.hasPhoto is bool
+        && (!('pointsAwarded' in data) || (data.pointsAwarded is int && data.pointsAwarded >= 0 && data.pointsAwarded <= 25))
+        && (!('photoStoragePath' in data) || (data.photoStoragePath is string && data.photoStoragePath.size() <= 300))
+        && (!('beforeImageURL' in data) || isValidSafeImageUrl(data.beforeImageURL))
+        && (!('afterImageURL' in data) || isValidSafeImageUrl(data.afterImageURL))
+        && (!('verificationStatus' in data) || (data.verificationStatus is string && isValidVerificationStatus(data.verificationStatus)))
+        && (!('verificationReason' in data) || (data.verificationReason is string && data.verificationReason.size() >= 3 && data.verificationReason.size() <= 400))
+        && (!('surroundingLandmarks' in data) || (data.surroundingLandmarks is string && data.surroundingLandmarks.size() >= 2 && data.surroundingLandmarks.size() <= 200))
+        && (!('materialEstimate' in data) || (data.materialEstimate is string && data.materialEstimate.size() >= 2 && data.materialEstimate.size() <= 240))
+        && (!('socialImpactScore' in data) || (data.socialImpactScore is int && data.socialImpactScore >= 1 && data.socialImpactScore <= 100))
+        && (!('economicCostOfDelay' in data) || (data.economicCostOfDelay is string && data.economicCostOfDelay.size() >= 2 && data.economicCostOfDelay.size() <= 240))
+        && (!('privateLat' in data) || (data.privateLat is number && data.privateLat >= -90 && data.privateLat <= 90))
+        && (!('privateLng' in data) || (data.privateLng is number && data.privateLng >= -180 && data.privateLng <= 180))
+        && (!('detectedAddress' in data) || (data.detectedAddress is string && data.detectedAddress.size() >= 2 && data.detectedAddress.size() <= 160))
+        && (!('highPriorityZone' in data) || data.highPriorityZone is bool)
+        && (!('duplicateOfId' in data) || (data.duplicateOfId is string && isValidId(data.duplicateOfId)))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidReportEvent(data, reportId, eventId) {
+      return data.keys().hasAll([
+          'id', 'reportId', 'reportOwnerUid', 'eventType',
+          'label', 'note', 'actorUid', 'actorLabel', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'reportId', 'reportOwnerUid', 'eventType', 'statusTransition',
+          'label', 'note', 'actorUid', 'actorLabel', 'createdAt'
+        ])
+        && data.id is string && data.id == eventId && isValidId(data.id)
+        && data.reportId is string && data.reportId == reportId && isValidId(data.reportId)
+        && data.reportOwnerUid is string && isValidId(data.reportOwnerUid)
+        && data.eventType is string && data.eventType in ['submitted', 'reviewed', 'status_changed', 'note_added']
+        && (!('statusTransition' in data) || (data.statusTransition is string && isValidStatus(data.statusTransition)))
+        && data.label is string && data.label.size() >= 2 && data.label.size() <= 80
+        && data.note is string && data.note.size() >= 2 && data.note.size() <= 400
+        && data.actorUid is string && isValidId(data.actorUid)
+        && data.actorLabel is string && data.actorLabel.size() >= 2 && data.actorLabel.size() <= 80
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPublicReport(data, reportId) {
+      return data.keys().hasAll([
+          'id', 'reporterId', 'title', 'category', 'locality',
+          'status', 'reviewState', 'publicSummary', 'publicApproved',
+          'eventCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'reporterId', 'title', 'category', 'locality',
+          'status', 'reviewState', 'publicSummary', 'publicApproved',
+          'beforeImageURL', 'afterImageURL', 'verificationStatus', 'verificationReason',
+          'surroundingLandmarks', 'materialEstimate', 'socialImpactScore', 'economicCostOfDelay',
+          'lat', 'lng', 'detectedAddress', 'highPriorityZone',
+          'eventCount', 'createdAt', 'updatedAt'
+        ])
+        && data.id is string && data.id == reportId && data.id.size() >= 3 && isValidId(data.id)
+        && data.reporterId is string && isValidId(data.reporterId)
+        && data.title is string && data.title.size() >= 5 && data.title.size() <= 120
+        && data.category is string && isValidCategory(data.category)
+        && data.locality is string && data.locality.size() >= 2 && data.locality.size() <= 80
+        && data.status is string && isValidStatus(data.status)
+        && data.reviewState is string && data.reviewState == 'accepted'
+        && data.publicSummary is string && data.publicSummary.size() >= 10 && data.publicSummary.size() <= 600
+        && data.publicApproved is bool
+        && (!('beforeImageURL' in data) || isValidSafeImageUrl(data.beforeImageURL))
+        && (!('afterImageURL' in data) || isValidSafeImageUrl(data.afterImageURL))
+        && (!('verificationStatus' in data) || (data.verificationStatus is string && isValidVerificationStatus(data.verificationStatus)))
+        && (!('verificationReason' in data) || (data.verificationReason is string && data.verificationReason.size() >= 3 && data.verificationReason.size() <= 400))
+        && (!('surroundingLandmarks' in data) || (data.surroundingLandmarks is string && data.surroundingLandmarks.size() >= 2 && data.surroundingLandmarks.size() <= 200))
+        && (!('materialEstimate' in data) || (data.materialEstimate is string && data.materialEstimate.size() >= 2 && data.materialEstimate.size() <= 240))
+        && (!('socialImpactScore' in data) || (data.socialImpactScore is int && data.socialImpactScore >= 1 && data.socialImpactScore <= 100))
+        && (!('economicCostOfDelay' in data) || (data.economicCostOfDelay is string && data.economicCostOfDelay.size() >= 2 && data.economicCostOfDelay.size() <= 240))
+        && (!('lat' in data) || (data.lat is number && data.lat >= -90 && data.lat <= 90))
+        && (!('lng' in data) || (data.lng is number && data.lng >= -180 && data.lng <= 180))
+        && (!('detectedAddress' in data) || (data.detectedAddress is string && data.detectedAddress.size() >= 2 && data.detectedAddress.size() <= 160))
+        && (!('highPriorityZone' in data) || data.highPriorityZone is bool)
+        && data.eventCount is int && data.eventCount >= 1 && data.eventCount <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Rules
+
+    // Private User Profiles (PII isolated to owner or verified admin; CivicPoints increases strictly admin-only)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if false;
+
+      allow create: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserPrivateProfile(incoming(), userId)
+        && (!('civicPoints' in incoming()) || incoming().civicPoints == 0)
+        && (!('acceptedReportsCount' in incoming()) || incoming().acceptedReportsCount == 0)
+        && (!('resolvedReportsCount' in incoming()) || incoming().resolvedReportsCount == 0)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerified()
+        && isValidId(userId)
+        && isValidUserPrivateProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Tier 1: Project admin awarding or reconciling CivicPoints
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount', 'updatedAt'
+            ])
+          )
+          ||
+          // Tier 2: Owner editing alias or leaderboard preference only (never CivicPoints)
+          (
+            request.auth.uid == userId
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'alias', 'leaderboardOptIn', 'updatedAt'
+            ])
+          )
+          ||
+          // Tier 3: Owner redeeming a Rewards Store voucher (strictly decreasing by exact catalog cost)
+          (
+            request.auth.uid == userId
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'civicPoints', 'updatedAt'
+            ])
+            && existing().civicPoints is int
+            && incoming().civicPoints is int
+            && incoming().civicPoints >= 0
+            && incoming().civicPoints < existing().civicPoints
+            && isValidRewardCost(existing().civicPoints - incoming().civicPoints)
+          )
+        );
+
+      allow delete: if false;
+
+      // Master-Gate Subcollection: Immutable Merchant Reward Redemptions
+      match /redemptions/{redemptionId} {
+        allow get: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(redemptionId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && (request.auth.uid == userId || isAdmin());
+
+        allow list: if isSignedIn()
+          && (existing().userId == request.auth.uid || isBootstrapAdmin());
+
+        allow create: if isVerified()
+          && isValidId(userId)
+          && isValidId(redemptionId)
+          && request.auth.uid == userId
+          && isValidRewardRedemption(incoming(), userId, redemptionId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.civicPoints is int
+          && getAfter(/databases/$(database)/documents/users/$(userId)).data.civicPoints
+            == get(/databases/$(database)/documents/users/$(userId)).data.civicPoints - incoming().pointsSpent;
+
+        allow update, delete: if false;
+      }
+    }
+
+    // Public Opt-In Leaderboard Alias & CivicPoints Projection (Zero PII)
+    match /public_profiles/{userId} {
+      allow get: if isValidId(userId)
+        && (existing().leaderboardOptIn == true || (isSignedIn() && request.auth.uid == userId) || isAdmin());
+      allow list: if existing().leaderboardOptIn == true;
+
+      allow create: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidPublicProfile(incoming(), userId)
+        && (!('civicPoints' in incoming()) || incoming().civicPoints == 0)
+        && (!('acceptedReportsCount' in incoming()) || incoming().acceptedReportsCount == 0)
+        && (!('resolvedReportsCount' in incoming()) || incoming().resolvedReportsCount == 0)
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerified()
+        && isValidId(userId)
+        && isValidPublicProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && (
+          // Tier 1: Project admin syncing CivicPoints for leaderboard rankings
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount', 'updatedAt'
+            ])
+          )
+          ||
+          // Tier 2: Owner editing alias or leaderboard opt-in only (never CivicPoints)
+          (
+            request.auth.uid == userId
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'alias', 'leaderboardOptIn', 'updatedAt'
+            ])
+          )
+          ||
+          // Tier 3: Owner syncing strict-decrease reward redemption deduction
+          (
+            request.auth.uid == userId
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'civicPoints', 'updatedAt'
+            ])
+            && existing().civicPoints is int
+            && incoming().civicPoints is int
+            && incoming().civicPoints >= 0
+            && incoming().civicPoints < existing().civicPoints
+            && isValidRewardCost(existing().civicPoints - incoming().civicPoints)
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // Protected Admin Memberships — never client-writable
+    match /admins/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list, create, update, delete: if false;
+    }
+
+    // Private Civic Reports (owner + project admins only)
+    match /reports/{reportId} {
+      allow get: if isSignedIn() && isValidId(reportId) && (existing().reporterId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().reporterId == request.auth.uid || isBootstrapAdmin());
+
+      allow create: if isVerified()
+        && isValidId(reportId)
+        && isValidPrivateReport(incoming(), reportId)
+        && incoming().reporterId == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().reviewState == 'unreviewed'
+        && incoming().publicApproved == false
+        && (!('pointsAwarded' in incoming()) || incoming().pointsAwarded == 0)
+        && !('duplicateOfId' in incoming())
+        && !('afterImageURL' in incoming())
+        && !('verificationStatus' in incoming())
+        && !('verificationReason' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerified()
+        && isValidId(reportId)
+        && isValidPrivateReport(incoming(), reportId)
+        && incoming().id == existing().id
+        && incoming().reporterId == existing().reporterId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Tier 1: Project admin moderation, AI fix verification & CivicPoints award action
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'reviewState', 'publicApproved', 'duplicateOfId',
+              'pointsAwarded', 'beforeImageURL', 'afterImageURL',
+              'verificationStatus', 'verificationReason', 'updatedAt'
+            ])
+          )
+          ||
+          // Tier 2: Reporter editing unreviewed, non-terminal report text only
+          (
+            existing().reporterId == request.auth.uid
+            && existing().status != 'resolved'
+            && existing().reviewState == 'unreviewed'
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'category', 'description', 'locality', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if false;
+
+      // Master-Gate Subcollection: Report Timeline Events (Immutable Audit Log)
+      match /events/{eventId} {
+        allow get: if isSignedIn()
+          && isValidId(reportId)
+          && isValidId(eventId)
+          && exists(/databases/$(database)/documents/reports/$(reportId))
+          && (
+            get(/databases/$(database)/documents/reports/$(reportId)).data.reporterId == request.auth.uid
+            || isAdmin()
+          );
+
+        allow list: if isSignedIn() && (existing().reportOwnerUid == request.auth.uid || isBootstrapAdmin());
+
+        allow create: if isVerified()
+          && isValidId(reportId)
+          && isValidId(eventId)
+          && isValidReportEvent(incoming(), reportId, eventId)
+          && incoming().actorUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && (
+            (
+              exists(/databases/$(database)/documents/reports/$(reportId))
+              && get(/databases/$(database)/documents/reports/$(reportId)).data.reporterId == incoming().reportOwnerUid
+            )
+            || (
+              existsAfter(/databases/$(database)/documents/reports/$(reportId))
+              && getAfter(/databases/$(database)/documents/reports/$(reportId)).data.reporterId == incoming().reportOwnerUid
+            )
+          )
+          && (
+            isAdmin()
+            || (
+              incoming().reportOwnerUid == request.auth.uid
+              && incoming().eventType == 'submitted'
+              && incoming().statusTransition == 'pending'
+            )
+          );
+
+        allow update, delete: if false;
+      }
+    }
+
+    // Safe Approved Public Reports (Read-only for public; admin-managed writes)
+    match /public_reports/{reportId} {
+      allow get: if isValidId(reportId) && existing().publicApproved == true;
+      allow list: if existing().publicApproved == true;
+
+      allow create: if isAdmin()
+        && isValidId(reportId)
+        && isValidPublicReport(incoming(), reportId)
+        && existsAfter(/databases/$(database)/documents/reports/$(reportId))
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidId(reportId)
+        && isValidPublicReport(incoming(), reportId)
+        && incoming().id == existing().id
+        && incoming().reporterId == existing().reporterId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'locality', 'status', 'publicSummary',
+          'publicApproved', 'beforeImageURL', 'afterImageURL',
+          'verificationStatus', 'verificationReason',
+          'surroundingLandmarks', 'materialEstimate', 'socialImpactScore', 'economicCostOfDelay',
+          'lat', 'lng', 'detectedAddress', 'highPriorityZone',
+          'eventCount', 'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(reportId);
+    }
+
+    // Connection validation probe document (denied writes, safe probe)
+    match /test/connection {
+      allow get: if false;
+      allow list, write: if false;
+    }
+  }
+}

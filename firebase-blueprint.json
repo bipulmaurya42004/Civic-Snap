@@ -1,0 +1,547 @@
+{
+  "entities": {
+    "UserPrivateProfile": {
+      "title": "UserPrivateProfile",
+      "description": "Private authenticated user profile storing account email, chosen alias, leaderboard opt-in preference, and admin-awarded CivicPoints totals. Isolated from public reads.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "alias": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "leaderboardOptIn": {
+          "type": "boolean"
+        },
+        "civicPoints": {
+          "type": "integer",
+          "description": "Admin-awarded CivicPoints total (10 pts per Accepted report, 25 pts per Resolved report)."
+        },
+        "acceptedReportsCount": {
+          "type": "integer",
+          "description": "Count of admin-accepted reports credited to this user."
+        },
+        "resolvedReportsCount": {
+          "type": "integer",
+          "description": "Count of admin-resolved reports credited to this user."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "alias", "leaderboardOptIn", "createdAt", "updatedAt"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Public opt-in contributor alias and CivicPoints projection containing zero PII (no email or legal name).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "alias": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "leaderboardOptIn": {
+          "type": "boolean"
+        },
+        "civicPoints": {
+          "type": "integer",
+          "description": "Admin-awarded CivicPoints total displayed on the public leaderboard."
+        },
+        "acceptedReportsCount": {
+          "type": "integer"
+        },
+        "resolvedReportsCount": {
+          "type": "integer"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "alias", "leaderboardOptIn", "updatedAt"]
+    },
+    "AdminMembership": {
+      "title": "AdminMembership",
+      "description": "Protected project-admin membership document. Cannot be created or altered by client users.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "grantedAt"]
+    },
+    "PrivateReport": {
+      "title": "PrivateReport",
+      "description": "Full civic report document accessible only to the submitting reporter and authorised project admins.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reporterId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "enum": ["pothole", "waste", "streetlight", "other"]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 600
+        },
+        "locality": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "resolved"]
+        },
+        "reviewState": {
+          "type": "string",
+          "enum": ["unreviewed", "accepted", "duplicate", "rejected"]
+        },
+        "publicApproved": {
+          "type": "boolean"
+        },
+        "hasPhoto": {
+          "type": "boolean"
+        },
+        "pointsAwarded": {
+          "type": "integer",
+          "description": "Admin-awarded CivicPoints currently credited for this report (0, 10, or 25)."
+        },
+        "photoStoragePath": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "beforeImageURL": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 2048,
+          "pattern": "^(https://|/demo/).+$",
+          "description": "Firebase Storage HTTPS URL (or demo asset path) of the original civic issue photo."
+        },
+        "afterImageURL": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 2048,
+          "pattern": "^(https://|/demo/).+$",
+          "description": "Firebase Storage HTTPS URL (or demo asset path) of the admin-uploaded proof-of-fix photo."
+        },
+        "verificationStatus": {
+          "type": "string",
+          "enum": ["unverified", "verified", "flagged"],
+          "description": "Gemini Vision Before-vs-After fix verification verdict."
+        },
+        "verificationReason": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 400,
+          "description": "One-sentence AI explanation of the Before-vs-After fix comparison."
+        },
+        "surroundingLandmarks": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200,
+          "description": "AI-identified nearby landmarks (school, hospital, high-traffic market) for priority scoring."
+        },
+        "materialEstimate": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 240,
+          "description": "Rough engineering estimate of repair materials and labor hours."
+        },
+        "socialImpactScore": {
+          "type": "integer",
+          "description": "AI social impact priority score from 1 to 100."
+        },
+        "economicCostOfDelay": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 240,
+          "description": "Estimated 30-day hidden economic cost to citizens if left unfixed."
+        },
+        "privateLat": {
+          "type": "number"
+        },
+        "privateLng": {
+          "type": "number"
+        },
+        "detectedAddress": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160,
+          "description": "Reverse-geocoded readable street/locality address captured via GPS."
+        },
+        "highPriorityZone": {
+          "type": "boolean",
+          "description": "True when the report is near a hospital or school zone."
+        },
+        "duplicateOfId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "reporterId",
+        "title",
+        "category",
+        "description",
+        "locality",
+        "status",
+        "reviewState",
+        "publicApproved",
+        "hasPhoto",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ReportEvent": {
+      "title": "ReportEvent",
+      "description": "Immutable chronological status or review event attached to a report.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reportId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "eventType": {
+          "type": "string",
+          "enum": ["submitted", "reviewed", "status_changed", "note_added"]
+        },
+        "statusTransition": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "resolved"]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "note": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 400
+        },
+        "reportOwnerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorLabel": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "reportId",
+        "reportOwnerUid",
+        "eventType",
+        "label",
+        "note",
+        "actorUid",
+        "actorLabel",
+        "createdAt"
+      ]
+    },
+    "PublicReport": {
+      "title": "PublicReport",
+      "description": "Explicitly approved, safe public summary of a civic report with zero raw image paths, zero GPS coordinates, and zero reporter emails.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reporterId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "enum": ["pothole", "waste", "streetlight", "other"]
+        },
+        "locality": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "resolved"]
+        },
+        "reviewState": {
+          "type": "string",
+          "enum": ["accepted"]
+        },
+        "publicSummary": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 600
+        },
+        "publicApproved": {
+          "type": "boolean"
+        },
+        "beforeImageURL": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 2048,
+          "pattern": "^(https://|/demo/).+$"
+        },
+        "afterImageURL": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 2048,
+          "pattern": "^(https://|/demo/).+$"
+        },
+        "verificationStatus": {
+          "type": "string",
+          "enum": ["unverified", "verified", "flagged"]
+        },
+        "verificationReason": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 400
+        },
+        "surroundingLandmarks": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "materialEstimate": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 240
+        },
+        "socialImpactScore": {
+          "type": "integer"
+        },
+        "economicCostOfDelay": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 240
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "detectedAddress": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "highPriorityZone": {
+          "type": "boolean"
+        },
+        "eventCount": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "reporterId",
+        "title",
+        "category",
+        "locality",
+        "status",
+        "reviewState",
+        "publicSummary",
+        "publicApproved",
+        "eventCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RewardRedemption": {
+      "title": "RewardRedemption",
+      "description": "Immutable merchant discount coupon redemption record owned by a user, atomically coupled with a strict CivicPoints balance deduction.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "rewardId": {
+          "type": "string",
+          "enum": ["gym-15-off", "cafe-free-coffee", "grocery-10-off"]
+        },
+        "rewardTitle": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "pointsSpent": {
+          "type": "integer",
+          "enum": [100, 150, 200]
+        },
+        "terms": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "couponCode": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "expiresAtMs": {
+          "type": "integer"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "rewardId",
+        "rewardTitle",
+        "pointsSpent",
+        "terms",
+        "couponCode",
+        "expiresAtMs",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPrivateProfile" },
+      "description": "Private user account profile with admin-managed CivicPoints, isolated to owner and authorised admins."
+    },
+    "/users/{userId}/redemptions/{redemptionId}": {
+      "schema": { "$ref": "#/entities/RewardRedemption" },
+      "description": "Immutable merchant reward coupon redemptions owned by the user."
+    },
+    "/public_profiles/{userId}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Public opt-in contributor alias and CivicPoints projection for the recognition leaderboard."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminMembership" },
+      "description": "Protected admin membership table."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/PrivateReport" },
+      "description": "Full civic reports restricted to submitting reporter and project admins."
+    },
+    "/reports/{reportId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/ReportEvent" },
+      "description": "Immutable chronological audit/timeline events for a report."
+    },
+    "/public_reports/{reportId}": {
+      "schema": { "$ref": "#/entities/PublicReport" },
+      "description": "Admin-approved safe public summaries for /issues, /dashboard, and /leaderboard."
+    }
+  }
+}

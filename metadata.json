@@ -1,0 +1,6 @@
+{
+  "name": "CivicSnap",
+  "description": "Snap. Report. Track. An independent civic platform where people can create photo-based reports of city issues, receive AI category suggestions, and follow available status updates in one place.",
+  "requestFramePermissions": ["geolocation", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
