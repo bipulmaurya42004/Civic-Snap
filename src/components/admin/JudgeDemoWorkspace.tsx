@@ -7,8 +7,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   ExternalLink,
+  Lock,
+  LogIn,
   MapPin,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
   Siren,
   Sparkles,
@@ -20,16 +23,21 @@ import {
   type JudgeVerificationItem,
 } from "@/lib/bengaluru-feed-data";
 import { buildGoogleMapsUrl } from "@/lib/location-helpers";
+import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
 import { SafeCivicImage } from "@/components/ui/SafeCivicImage";
 import { PageTransition } from "@/components/ui/MotionPrimitives";
 
 type AuditDecision = "pending" | "approved" | "rejected";
 
 export function JudgeDemoWorkspace() {
+  const { user, isAdmin, busy, signInWithGoogle } = useFirebaseAuth();
   const [decisions, setDecisions] = useState<Record<string, AuditDecision>>({});
   const [selectedId, setSelectedId] = useState<string>(
     JUDGE_DEMO_VERIFICATIONS[0].id
   );
+
+  // Only verified users in NEXT_PUBLIC_ADMIN_EMAILS (enforced alongside Firestore rules) may trigger Approve/Reject
+  const canModerate = Boolean(user && user.emailVerified && isAdmin);
 
   const selectedItem: JudgeVerificationItem =
     JUDGE_DEMO_VERIFICATIONS.find((item) => item.id === selectedId) ??
@@ -53,40 +61,83 @@ export function JudgeDemoWorkspace() {
   const isHighConfidence = selectedItem.aiMatchPercent >= 80;
 
   const setDecisionFor = (id: string, decision: AuditDecision) => {
+    if (!canModerate) return;
     setDecisions((prev) => ({ ...prev, [id]: decision }));
   };
 
   return (
     <PageTransition className="mt-6 space-y-6">
-      {/* Clean Light Judge Sandbox Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 px-5 py-3.5">
+      {/* Clean Light Permission-Aware Banner */}
+      <div
+        className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-5 py-3.5 ${
+          canModerate
+            ? "border-emerald-200 bg-emerald-50/70"
+            : "border-amber-200 bg-amber-50/75"
+        }`}
+      >
         <div className="flex items-center gap-2.5 text-sm">
-          <ShieldCheck
-            size={18}
-            className="shrink-0 text-blue-600"
-            aria-hidden="true"
-          />
+          {canModerate ? (
+            <ShieldCheck
+              size={18}
+              className="shrink-0 text-emerald-700"
+              aria-hidden="true"
+            />
+          ) : (
+            <ShieldAlert
+              size={18}
+              className="shrink-0 text-amber-700"
+              aria-hidden="true"
+            />
+          )}
           <p className="text-slate-800">
-            <strong className="font-semibold text-slate-900">
-              Judge Demo Mode Active:
-            </strong>{" "}
-            Inspect contractor Before-vs-After repair photos, Gemini Vision match
-            scores, and approve or reject payouts interactively.
+            {canModerate ? (
+              <>
+                <strong className="font-semibold text-slate-900">
+                  Authorised Staff Session ({user?.email}):
+                </strong>{" "}
+                Inspect Before-vs-After repair photos, Gemini Vision match
+                scores, and approve or reject contractor claims.
+              </>
+            ) : (
+              <>
+                <strong className="font-semibold text-slate-900">
+                  Read-Only Public Audit View:
+                </strong>{" "}
+                You can inspect all contractor Before-vs-After photos and AI
+                match scores. Sign in with an authorised staff account (
+                <code className="rounded bg-white/80 px-1 py-0.5 font-mono text-xs text-slate-700">
+                  NEXT_PUBLIC_ADMIN_EMAILS
+                </code>
+                ) to approve or reject repairs.
+              </>
+            )}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setDecisions({})}
-            className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
-          >
-            <RotateCcw size={13} aria-hidden="true" />
-            <span>Reset Decisions</span>
-          </button>
+          {canModerate ? (
+            <button
+              type="button"
+              onClick={() => setDecisions({})}
+              className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+            >
+              <RotateCcw size={13} aria-hidden="true" />
+              <span>Reset Decisions</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void signInWithGoogle()}
+              className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 disabled:opacity-60"
+            >
+              <LogIn size={13} aria-hidden="true" />
+              <span>Admin Sign In</span>
+            </button>
+          )}
           <Link
             href="/feed"
-            className="inline-flex min-h-[36px] items-center rounded-xl border border-blue-200 bg-white px-3 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+            className="inline-flex min-h-[36px] items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
           >
             Public Feed
           </Link>
@@ -373,6 +424,14 @@ export function JudgeDemoWorkspace() {
                   payout held
                 </span>
               </p>
+            ) : !canModerate ? (
+              <p className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+                <Lock size={13} aria-hidden="true" />
+                <span>
+                  Approval actions locked — authorised staff in
+                  NEXT_PUBLIC_ADMIN_EMAILS required
+                </span>
+              </p>
             ) : (
               <p className="text-sm text-slate-600">
                 Review the Before-vs-After visual evidence and confirm your
@@ -384,19 +443,39 @@ export function JudgeDemoWorkspace() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
+              disabled={!canModerate}
+              title={
+                canModerate
+                  ? "Reject contractor proof and hold payout"
+                  : "Only authorised admin accounts can reject proofs"
+              }
               onClick={() => setDecisionFor(selectedItem.id, "rejected")}
-              className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-rose-600/20 transition-all hover:bg-rose-700 active:scale-95 whitespace-nowrap"
+              className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-rose-600/20 transition-all hover:bg-rose-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 whitespace-nowrap"
             >
-              <XCircle size={16} aria-hidden="true" />
+              {canModerate ? (
+                <XCircle size={16} aria-hidden="true" />
+              ) : (
+                <Lock size={15} aria-hidden="true" />
+              )}
               <span>Reject Proof</span>
             </button>
 
             <button
               type="button"
+              disabled={!canModerate}
+              title={
+                canModerate
+                  ? "Approve repair proof and mark Verified Fixed"
+                  : "Only authorised admin accounts can approve proofs"
+              }
               onClick={() => setDecisionFor(selectedItem.id, "approved")}
-              className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 whitespace-nowrap"
+              className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 whitespace-nowrap"
             >
-              <CheckCircle2 size={16} aria-hidden="true" />
+              {canModerate ? (
+                <CheckCircle2 size={16} aria-hidden="true" />
+              ) : (
+                <Lock size={15} aria-hidden="true" />
+              )}
               <span>Approve &amp; Verify Fix</span>
             </button>
           </div>

@@ -11,7 +11,6 @@ import {
   Gift,
   HelpCircle,
   Home,
-  LayoutDashboard,
   LogIn,
   LogOut,
   MapPin,
@@ -31,21 +30,25 @@ const PRIMARY_NAV_ITEMS = [
     label: "Explore Issues",
     href: "/feed",
     matchPrefixes: ["/feed", "/issues"],
-  },
-  {
-    label: "Dashboard",
-    href: "/admin",
-    matchPrefixes: ["/admin", "/dashboard"],
+    isStaff: false,
   },
   {
     label: "Leaderboard",
     href: "/ward-wars",
     matchPrefixes: ["/ward-wars", "/leaderboard"],
+    isStaff: false,
   },
   {
     label: "Rewards Store",
     href: "/rewards",
     matchPrefixes: ["/rewards"],
+    isStaff: false,
+  },
+  {
+    label: "Dashboard",
+    href: "/admin",
+    matchPrefixes: ["/admin", "/dashboard"],
+    isStaff: true,
   },
 ] as const;
 
@@ -59,10 +62,10 @@ const DRAWER_OVERVIEW_ITEMS = [
 
 const DRAWER_PLATFORM_ITEMS = [
   { label: "Explore Issues", href: "/feed", icon: MapPin },
-  { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Leaderboard", href: "/ward-wars", icon: Trophy },
   { label: "Rewards Store", href: "/rewards", icon: Gift },
-  { label: "Read-Only Demo Mode", href: "/admin?mode=judge", icon: ShieldCheck },
+  { label: "Dashboard (Staff)", href: "/admin", icon: Shield },
+  { label: "Read-Only Audit View", href: "/admin?mode=judge", icon: ShieldCheck },
 ] as const;
 
 export function SiteHeader() {
@@ -130,7 +133,18 @@ export function SiteHeader() {
                       className="absolute inset-x-2 -bottom-[15px] h-0.5 rounded-full bg-blue-600"
                     />
                   )}
-                  <span className="relative z-10">{item.label}</span>
+                  <span className="relative z-10 inline-flex items-center gap-1.5">
+                    {item.isStaff && (
+                      <Shield
+                        size={14}
+                        aria-hidden="true"
+                        className={
+                          isActive ? "text-blue-600" : "text-slate-400"
+                        }
+                      />
+                    )}
+                    <span>{item.label}</span>
+                  </span>
                 </Link>
               );
             })}

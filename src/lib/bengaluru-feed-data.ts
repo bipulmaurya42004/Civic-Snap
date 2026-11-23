@@ -10,7 +10,10 @@ export interface BengaluruFeedIssue {
   summary: string;
   imageUrl: string;
   imageAlt: string;
+  beforeImageUrl?: string;
   afterImageUrl?: string;
+  aiMatchPercent?: number;
+  aiVerificationSummary?: string;
   lat: number;
   lng: number;
   highPriorityZone: boolean;
@@ -132,7 +135,11 @@ export const BENGALURU_FEED_ISSUES: readonly BengaluruFeedIssue[] = [
       "Cracked concrete curb and gravel crater resurfaced with hot-mix asphalt. Gemini Vision verified the contractor's repair photo at 94.8% match.",
     imageUrl: "/demo/pothole-fixed.jpg",
     imageAlt: "Freshly patched and smooth asphalt surface on 12th Main Rd Indiranagar",
+    beforeImageUrl: "/demo/pothole.jpg",
     afterImageUrl: "/demo/pothole-fixed.jpg",
+    aiMatchPercent: 94.8,
+    aiVerificationSummary:
+      "Same curb geometry and white lane marking confirmed. Gravel crater is fully compacted and sealed with fresh hot-mix asphalt flush to road grade.",
     lat: 12.9739,
     lng: 77.6461,
     highPriorityZone: true,
@@ -177,7 +184,11 @@ export const BENGALURU_FEED_ISSUES: readonly BengaluruFeedIssue[] = [
       "Construction rubble and dumped tiles cleared from the pedestrian shoulder; footpath restored and AI verified.",
     imageUrl: "/demo/pothole-fixed.jpg",
     imageAlt: "Clean repaired street edge along 11th Main Road Jayanagar",
+    beforeImageUrl: "/demo/waste.jpg",
     afterImageUrl: "/demo/pothole-fixed.jpg",
+    aiMatchPercent: 92.4,
+    aiVerificationSummary:
+      "Construction rubble and overflowing curb bags completely cleared from the pedestrian shoulder; footpath swept and restored.",
     lat: 12.9308,
     lng: 77.5838,
     highPriorityZone: false,
@@ -326,6 +337,168 @@ export const WARD_WARS_STANDINGS: readonly WardStanding[] = [
     topColony: "Church Street & Brigade Rd",
   },
 ] as const;
+
+export interface CitizenStarEntry {
+  rank: number;
+  alias: string;
+  ward: string;
+  civicPoints: number;
+  verifiedFixes: number;
+  reportsAccepted: number;
+  tierLabel: "City Guardian" | "Eco Warrior" | "Street Watcher";
+  specialty: string;
+}
+
+export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
+  {
+    rank: 1,
+    alias: "IndiranagarRider",
+    ward: "Indiranagar",
+    civicPoints: 1420,
+    verifiedFixes: 28,
+    reportsAccepted: 34,
+    tierLabel: "City Guardian",
+    specialty: "Road & Hospital Zone Audits",
+  },
+  {
+    rank: 2,
+    alias: "HSRStreetWatch",
+    ward: "HSR Layout",
+    civicPoints: 1285,
+    verifiedFixes: 25,
+    reportsAccepted: 31,
+    tierLabel: "City Guardian",
+    specialty: "Sanitation & Footpath Safety",
+  },
+  {
+    rank: 3,
+    alias: "KoramangalaCivic",
+    ward: "Koramangala",
+    civicPoints: 1140,
+    verifiedFixes: 22,
+    reportsAccepted: 27,
+    tierLabel: "City Guardian",
+    specialty: "School Zone Streetlights",
+  },
+  {
+    rank: 4,
+    alias: "WhitefieldCommuter",
+    ward: "Whitefield",
+    civicPoints: 980,
+    verifiedFixes: 19,
+    reportsAccepted: 24,
+    tierLabel: "City Guardian",
+    specialty: "ITPL Corridor Potholes",
+  },
+  {
+    rank: 5,
+    alias: "JayanagarWalker",
+    ward: "Jayanagar",
+    civicPoints: 865,
+    verifiedFixes: 17,
+    reportsAccepted: 21,
+    tierLabel: "City Guardian",
+    specialty: "Pedestrian Kerb Repairs",
+  },
+  {
+    rank: 6,
+    alias: "MalleshwaramGuard",
+    ward: "Malleshwaram",
+    civicPoints: 790,
+    verifiedFixes: 15,
+    reportsAccepted: 19,
+    tierLabel: "City Guardian",
+    specialty: "Heritage Lane Lighting",
+  },
+  {
+    rank: 7,
+    alias: "MGRoadScout",
+    ward: "MG Road",
+    civicPoints: 710,
+    verifiedFixes: 14,
+    reportsAccepted: 17,
+    tierLabel: "City Guardian",
+    specialty: "Metro Approach Safety",
+  },
+  {
+    rank: 8,
+    alias: "UlsoorFixer",
+    ward: "Indiranagar",
+    civicPoints: 645,
+    verifiedFixes: 12,
+    reportsAccepted: 16,
+    tierLabel: "City Guardian",
+    specialty: "Drainage & Asphalt Audits",
+  },
+  {
+    rank: 9,
+    alias: "BellandurPulse",
+    ward: "HSR Layout",
+    civicPoints: 580,
+    verifiedFixes: 11,
+    reportsAccepted: 14,
+    tierLabel: "City Guardian",
+    specialty: "Lake Road Waste Clearance",
+  },
+  {
+    rank: 10,
+    alias: "SarjapurHelper",
+    ward: "Koramangala",
+    civicPoints: 515,
+    verifiedFixes: 10,
+    reportsAccepted: 13,
+    tierLabel: "City Guardian",
+    specialty: "Hinglish Voice Reporting",
+  },
+] as const;
+
+export function buildCitizenStarsLeaderboard(
+  liveProfiles: ReadonlyArray<{
+    alias: string;
+    civicPoints?: number;
+    acceptedReportsCount?: number;
+    resolvedReportsCount?: number;
+    leaderboardOptIn?: boolean;
+  }> = []
+): CitizenStarEntry[] {
+  const byAlias = new Map<string, CitizenStarEntry>();
+
+  for (const base of CITIZEN_STARS_TOP_10) {
+    byAlias.set(base.alias.toLowerCase(), base);
+  }
+
+  for (const profile of liveProfiles) {
+    if (profile.leaderboardOptIn === false) continue;
+    const pts = Math.max(0, Math.floor(profile.civicPoints ?? 0));
+    if (pts <= 0 || !profile.alias.trim()) continue;
+    const key = profile.alias.trim().toLowerCase();
+    const tierLabel: CitizenStarEntry["tierLabel"] =
+      pts > 200 ? "City Guardian" : pts > 50 ? "Eco Warrior" : "Street Watcher";
+    byAlias.set(key, {
+      rank: 0,
+      alias: profile.alias.trim(),
+      ward: "Bengaluru Pilot",
+      civicPoints: pts,
+      verifiedFixes: Math.max(0, profile.resolvedReportsCount ?? 0),
+      reportsAccepted: Math.max(0, profile.acceptedReportsCount ?? 0),
+      tierLabel,
+      specialty: "Verified Live Contributor",
+    });
+  }
+
+  return Array.from(byAlias.values())
+    .sort(
+      (a, b) =>
+        b.civicPoints - a.civicPoints ||
+        b.verifiedFixes - a.verifiedFixes ||
+        a.alias.localeCompare(b.alias)
+    )
+    .slice(0, 10)
+    .map((entry, idx) => ({
+      ...entry,
+      rank: idx + 1,
+    }));
+}
 
 export interface JudgeVerificationItem {
   id: string;

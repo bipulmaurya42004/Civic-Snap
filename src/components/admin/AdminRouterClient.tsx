@@ -75,7 +75,7 @@ export function AdminRouterClient() {
             }`}
           >
             <Sparkles size={15} aria-hidden="true" />
-            <span>Judge Demo Mode</span>
+            <span>AI Audit Queue</span>
           </button>
 
           <button
@@ -94,13 +94,17 @@ export function AdminRouterClient() {
           </button>
         </div>
 
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
+            isAdmin
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
           <ShieldCheck size={13} aria-hidden="true" />
-          {activeTab === "judge"
-            ? "Interactive AI Vision Audit Sandbox"
-            : isAdmin
-              ? "Authorised Admin Session Active"
-              : "Admin Sign-In Required for Firestore Writes"}
+          {isAdmin
+            ? "Authorised Staff Session Active"
+            : "Read-Only Mode · Staff Required to Approve"}
         </span>
       </div>
 

@@ -17,6 +17,7 @@ import {
   isAuthorizedAdminEmail,
   MAX_PHOTO_BYTES,
   paginateIssues,
+  parseAdminEmailList,
   parseFirestoreSubmitError,
   REWARD_CATALOG,
   sanitizeRedirectPath,
@@ -50,6 +51,8 @@ import {
 } from "./location-helpers";
 import {
   BENGALURU_FEED_ISSUES,
+  buildCitizenStarsLeaderboard,
+  CITIZEN_STARS_TOP_10,
   filterBengaluruFeed,
   generateQrMatrix,
   JUDGE_DEMO_VERIFICATIONS,
@@ -237,12 +240,21 @@ test("getCivicLevelBadge maps 0-50 Bronze (Street Watcher), 51-200 Silver (Eco W
   assert.equal(g201.progressPercent, 100);
 });
 
-test("isAuthorizedAdminEmail allows only the two configured admin emails", () => {
-  assert.equal(isAuthorizedAdminEmail("bipulmaurya42004@gmail.com"), true);
-  assert.equal(isAuthorizedAdminEmail("VEDMINDSET@GMAIL.COM"), true);
-  assert.equal(isAuthorizedAdminEmail("  vedmindset@gmail.com  "), true);
-  assert.equal(isAuthorizedAdminEmail("citizen@example.com"), false);
-  assert.equal(isAuthorizedAdminEmail(null), false);
+test("isAuthorizedAdminEmail respects NEXT_PUBLIC_ADMIN_EMAILS and falls back to bootstrap admins", () => {
+  assert.equal(isAuthorizedAdminEmail("bipulmaurya42004@gmail.com", ""), true);
+  assert.equal(isAuthorizedAdminEmail("VEDMINDSET@GMAIL.COM", ""), true);
+  assert.equal(isAuthorizedAdminEmail("  vedmindset@gmail.com  ", ""), true);
+  assert.equal(isAuthorizedAdminEmail("citizen@example.com", ""), false);
+  assert.equal(isAuthorizedAdminEmail(null, ""), false);
+
+  // Explicit NEXT_PUBLIC_ADMIN_EMAILS override
+  const customEnv = "staff1@civicsnap.in,  LEAD.AUDIT@CIVICSNAP.IN ";
+  assert.deepEqual(parseAdminEmailList(customEnv), [
+    "staff1@civicsnap.in",
+    "lead.audit@civicsnap.in",
+  ]);
+  assert.equal(isAuthorizedAdminEmail("lead.audit@civicsnap.in", customEnv), true);
+  assert.equal(isAuthorizedAdminEmail("citizen@example.com", customEnv), false);
 });
 
 test("computeAdminReportStats calculates Total, Pending, In Progress, and Resolved counts", () => {
@@ -656,6 +668,41 @@ test("Bengaluru Feed filters, upvote sorting, Ward Wars podium, Judge audits, an
   assert.equal(JUDGE_DEMO_VERIFICATIONS[0]?.aiMatchPercent, 94.8);
   assert.ok(
     JUDGE_DEMO_VERIFICATIONS.some((item) => item.aiMatchPercent < 50)
+  );
+
+  // Resolved public feed items include Before/After photos and AI visual match score
+  const resolvedItems = BENGALURU_FEED_ISSUES.filter(
+    (item) => item.status === "resolved"
+  );
+  assert.ok(resolvedItems.length >= 2);
+  for (const resolved of resolvedItems) {
+    assert.ok(resolved.beforeImageUrl);
+    assert.ok(resolved.afterImageUrl);
+    assert.ok((resolved.aiMatchPercent ?? 0) >= 90);
+  }
+
+  // Citizen Stars Top 10 leaderboard merges live opted-in profiles and respects opt-out
+  assert.equal(CITIZEN_STARS_TOP_10.length, 10);
+  const mergedStars = buildCitizenStarsLeaderboard([
+    {
+      alias: "BengaluruHeroLive",
+      civicPoints: 1650,
+      resolvedReportsCount: 33,
+      acceptedReportsCount: 38,
+      leaderboardOptIn: true,
+    },
+    {
+      alias: "HiddenCitizen",
+      civicPoints: 9999,
+      leaderboardOptIn: false,
+    },
+  ]);
+  assert.equal(mergedStars.length, 10);
+  assert.equal(mergedStars[0]?.alias, "BengaluruHeroLive");
+  assert.equal(mergedStars[0]?.rank, 1);
+  assert.equal(
+    mergedStars.some((entry) => entry.alias === "HiddenCitizen"),
+    false
   );
 
   // Deterministic 9x9 QR grid

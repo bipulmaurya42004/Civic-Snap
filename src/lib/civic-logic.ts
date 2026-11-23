@@ -681,18 +681,37 @@ export function buildAuthHref(
 
 /**
  * Authorized CivicSnap admin accounts enforced alongside Firebase Auth & Firestore rules.
+ * Reads comma-separated emails from NEXT_PUBLIC_ADMIN_EMAILS when configured,
+ * falling back to the project's bootstrap admin accounts.
  */
 export const ALLOWED_ADMIN_EMAILS: readonly string[] = [
   "bipulmaurya42004@gmail.com",
   "vedmindset@gmail.com",
 ] as const;
 
+export function parseAdminEmailList(rawEnv?: string | null): string[] {
+  if (!rawEnv || !rawEnv.trim()) {
+    return [...ALLOWED_ADMIN_EMAILS];
+  }
+  const parsed = rawEnv
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 3 && entry.includes("@"));
+  return parsed.length > 0 ? parsed : [...ALLOWED_ADMIN_EMAILS];
+}
+
 export function isAuthorizedAdminEmail(
-  email: string | null | undefined
+  email: string | null | undefined,
+  rawEnvOverride?: string | null
 ): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  return ALLOWED_ADMIN_EMAILS.includes(normalized);
+  const allowedList = parseAdminEmailList(
+    rawEnvOverride !== undefined
+      ? rawEnvOverride
+      : process.env.NEXT_PUBLIC_ADMIN_EMAILS
+  );
+  return allowedList.includes(normalized);
 }
 
 /**
