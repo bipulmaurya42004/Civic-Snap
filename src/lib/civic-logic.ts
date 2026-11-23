@@ -738,7 +738,7 @@ export const REWARD_CATALOG: readonly RewardItem[] = [
     merchantCategory: "Bengaluru Cafés",
     description:
       "Enjoy 20% off specialty brews & snacks at Third Wave Coffee outlets across Indiranagar, Koramangala, and HSR Layout.",
-    pointsCost: 150,
+    pointsCost: 100,
     terms: "Min bill ₹300",
     codePrefix: "TWC20",
     validityMinutes: 15,
@@ -749,7 +749,7 @@ export const REWARD_CATALOG: readonly RewardItem[] = [
     merchantCategory: "Fitness & Wellness",
     description:
       "Unlock a complimentary 1-day all-access workout or group class pass at participating Bengaluru Cult.fit centres.",
-    pointsCost: 200,
+    pointsCost: 150,
     terms: "1 pass per week",
     codePrefix: "CULT1D",
     validityMinutes: 15,
@@ -760,7 +760,7 @@ export const REWARD_CATALOG: readonly RewardItem[] = [
     merchantCategory: "Quick Commerce",
     description:
       "Save ₹100 instantly on fresh groceries and daily essentials delivered in 10 minutes across Bengaluru pilot wards.",
-    pointsCost: 250,
+    pointsCost: 200,
     terms: "Min cart ₹499",
     codePrefix: "ZEP100",
     validityMinutes: 15,

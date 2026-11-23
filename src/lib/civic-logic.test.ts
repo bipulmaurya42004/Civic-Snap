@@ -48,6 +48,13 @@ import {
   matchBengaluruWardFromText,
   REPORT_WARD_DROPDOWN_OPTIONS,
 } from "./location-helpers";
+import {
+  BENGALURU_FEED_ISSUES,
+  filterBengaluruFeed,
+  generateQrMatrix,
+  JUDGE_DEMO_VERIFICATIONS,
+  WARD_WARS_STANDINGS,
+} from "./bengaluru-feed-data";
 import type { PublicIssueRecord } from "@/types/civic";
 
 test("filterAndSortIssues filters by category, status, ward, and search query", () => {
@@ -256,11 +263,11 @@ test("computeAdminReportStats calculates Total, Pending, In Progress, and Resolv
 test("Rewards Store catalog, eligibility, coupon generator, and 15-minute countdown formatter work deterministically", () => {
   assert.equal(REWARD_CATALOG.length, 3);
   assert.deepEqual(
-    REWARD_CATALOG.map((r) => [r.title, r.pointsCost, r.terms]),
+    REWARD_CATALOG.map((r) => [r.title, r.pointsCost, r.codePrefix]),
     [
-      ["15% Gym Discount", 100, "Min bill ₹3000"],
-      ["Free Cafe Coffee", 150, "Min bill ₹400"],
-      ["10% Grocery Store OFF", 200, "Min bill ₹500"],
+      ["Third Wave Coffee — 20% OFF", 100, "TWC20"],
+      ["Cult.fit — 1-Day Free Pass", 150, "CULT1D"],
+      ["Zepto — ₹100 OFF", 200, "ZEP100"],
     ]
   );
 
@@ -273,8 +280,8 @@ test("Rewards Store catalog, eligibility, coupon generator, and 15-minute countd
     shortfall: 0,
   });
 
-  const code = generateUniqueCouponCode("GYM15");
-  assert.match(code, /^CS-GYM15-[A-Z0-9]{6}$/);
+  const code = generateUniqueCouponCode("TWC20");
+  assert.match(code, /^CS-TWC20-[A-Z0-9]{6}$/);
 
   assert.equal(formatCountdownSeconds(900), "15:00");
   assert.equal(formatCountdownSeconds(59), "00:59");
@@ -601,4 +608,62 @@ test("Bengaluru Pilot Wards, Google Maps URL builder, ward matching, and High Pr
   assert.equal(formatted.localityName, "Indiranagar");
   assert.equal(formatted.matchedWard, "Indiranagar");
 });
+
+test("Bengaluru Feed filters, upvote sorting, Ward Wars podium, Judge audits, and QR matrix work deterministically", () => {
+  assert.equal(BENGALURU_FEED_ISSUES.length, 6);
+
+  const indiranagarOnly = filterBengaluruFeed(BENGALURU_FEED_ISSUES, {
+    search: "",
+    category: "all",
+    status: "all",
+    ward: "Indiranagar",
+    sort: "newest",
+  });
+  assert.equal(indiranagarOnly.length, 2);
+  assert.equal(indiranagarOnly[0]?.id, "CS-BLR-101");
+
+  const searchHospital = filterBengaluruFeed(BENGALURU_FEED_ISSUES, {
+    search: "Chinmaya",
+    category: "pothole",
+    status: "pending",
+    ward: "all",
+    sort: "newest",
+  });
+  assert.equal(searchHospital.length, 1);
+  assert.equal(searchHospital[0]?.highPriorityZone, true);
+
+  const mostUpvoted = filterBengaluruFeed(
+    BENGALURU_FEED_ISSUES,
+    {
+      search: "",
+      category: "all",
+      status: "all",
+      ward: "all",
+      sort: "most_upvoted",
+    },
+    { "CS-BLR-101": 40 }
+  );
+  // CS-BLR-101 has 64 + 40 = 104, beating CS-BLR-104 (87)
+  assert.equal(mostUpvoted[0]?.id, "CS-BLR-101");
+
+  // Ward Wars Top 3 podium
+  assert.deepEqual(
+    WARD_WARS_STANDINGS.slice(0, 3).map((w) => w.ward),
+    ["Indiranagar", "HSR Layout", "Koramangala"]
+  );
+
+  // Judge Demo verification items include 94.8% verified case and flagged case
+  assert.equal(JUDGE_DEMO_VERIFICATIONS[0]?.aiMatchPercent, 94.8);
+  assert.ok(
+    JUDGE_DEMO_VERIFICATIONS.some((item) => item.aiMatchPercent < 50)
+  );
+
+  // Deterministic 9x9 QR grid
+  const qrA = generateQrMatrix("CS-TWC20-ABCDEF");
+  const qrB = generateQrMatrix("CS-TWC20-ABCDEF");
+  assert.equal(qrA.length, 9);
+  assert.equal(qrA[0]?.length, 9);
+  assert.deepEqual(qrA, qrB);
+});
+
 
