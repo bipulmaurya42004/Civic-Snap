@@ -95,7 +95,7 @@ export function ProfileWorkspace() {
       .catch(() => {
         if (!cancelled) {
           setReportsError(
-            "Could not load your saved Firestore reports right now."
+            "Could not load your saved civic reports right now."
           );
         }
       })
@@ -142,7 +142,7 @@ export function ProfileWorkspace() {
         <EmptyState
           icon={<User size={20} aria-hidden="true" />}
           title="Sign in to view your CivicPoints, Level Badge & reports"
-          description="Sign in with Firebase Authentication to track your CivicPoints balance (+10 Accepted, +25 Resolved), unlock Street Watcher / Eco Warrior / City Guardian badges, and redeem local merchant rewards."
+          description="Sign in with your CivicSnap account to track your CivicPoints balance (+10 Accepted, +25 Resolved), unlock Street Watcher / Eco Warrior / City Guardian badges, and redeem local merchant rewards."
           primaryAction={{ label: "Sign In", href: "/login?next=%2Fprofile" }}
           secondaryAction={{
             label: "Create Account",
@@ -186,7 +186,7 @@ export function ProfileWorkspace() {
                   className={refreshing ? "animate-spin" : ""}
                   aria-hidden="true"
                 />
-                <span>Sync Firestore Points</span>
+                <span>Sync Live Points</span>
               </button>
             </div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">
@@ -421,7 +421,7 @@ export function ProfileWorkspace() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-slate-900">
-                Your Firestore reports ({reports.length})
+                Your Submitted Reports ({reports.length})
               </h2>
               <p className="text-xs text-slate-500">
                 Private photos and optional coordinates remain visible only to
@@ -450,7 +450,7 @@ export function ProfileWorkspace() {
             <EmptyState
               icon={<Award size={20} aria-hidden="true" />}
               title="No reports submitted yet"
-              description="Snap a local civic issue to submit your first report to Firestore and start earning CivicPoints."
+              description="Snap a local civic issue to submit your first report on CivicSnap and start earning CivicPoints."
               primaryAction={{ label: "Report an Issue", href: "/report" }}
               secondaryAction={{ label: "Explore Rewards", href: "/rewards" }}
             />

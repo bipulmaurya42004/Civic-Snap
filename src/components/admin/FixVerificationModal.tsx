@@ -144,8 +144,8 @@ export function FixVerificationModal({
     setVerificationResult(null);
 
     try {
-      // Step 1: Upload After photo (and optional Before photo if missing) to Firebase Storage
-      setStageMessage("Uploading Proof of Fix photo to Firebase Storage...");
+      // Step 1: Upload After photo (and optional Before photo if missing)
+      setStageMessage("Uploading Proof of Fix photo securely...");
       const afterUpload = await uploadCivicPhotoToStorage(
         afterFile,
         `proof-of-fix/${report.id}`
@@ -164,12 +164,12 @@ export function FixVerificationModal({
 
       if (!afterUpload.url) {
         setStorageWarning(
-          `Firebase Storage upload did not return a URL (${afterUpload.error ?? "check Firebase Storage rules"}). Gemini Vision verification will still run on your selected photo.`
+          `Cloud photo archive did not return a URL (${afterUpload.error ?? "check upload permissions"}). CivicSnap Vision AI verification will still run on your selected photo.`
         );
       }
 
-      // Step 2: Prepare compact base64 payloads & call Gemini Vision API route
-      setStageMessage("Comparing Before vs After photos with Gemini Vision AI...");
+      // Step 2: Prepare compact base64 payloads & call CivicSnap Vision AI route
+      setStageMessage("Comparing Before vs After photos with CivicSnap Vision AI...");
       const afterInline = await fileToCompactBase64(afterFile);
       const beforeInline = optionalBeforeFile
         ? await fileToCompactBase64(optionalBeforeFile)
@@ -201,7 +201,7 @@ export function FixVerificationModal({
 
       if (!aiRes.ok || !aiData.verdict || !aiData.reason) {
         throw new Error(
-          aiData.error || "Gemini Vision verification could not complete."
+          aiData.error || "CivicSnap Vision AI verification could not complete."
         );
       }
 
@@ -409,7 +409,7 @@ export function FixVerificationModal({
                   Upload After Photo
                 </span>
                 <span className="mt-0.5 text-[11px] text-slate-500">
-                  JPEG, PNG, WebP, or HEIC · Stored in Firebase Storage
+                  JPEG, PNG, WebP, HEIC, or AVIF · Encrypted CivicSnap cloud archive
                 </span>
                 <input
                   type="file"
@@ -448,7 +448,7 @@ export function FixVerificationModal({
           <strong className="font-semibold text-slate-900">
             Automated Verification Rule:
           </strong>{" "}
-          If Gemini Vision returns <strong className="text-emerald-700">Verified</strong>,
+          If CivicSnap Vision AI returns <strong className="text-emerald-700">Verified</strong>,
           status updates to <strong>Resolved</strong> and awards{" "}
           <strong>+{POINTS_PER_RESOLVED_REPORT} CivicPoints</strong> to the
           reporter. If <strong className="text-amber-700">Flagged</strong>, the

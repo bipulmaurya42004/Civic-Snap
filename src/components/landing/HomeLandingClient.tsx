@@ -60,7 +60,7 @@ const HOW_IT_WORKS_STEPS = [
     step: "02",
     title: "AI Engineering Audit",
     description:
-      "Gemini Vision estimates repair materials (kg of asphalt, LED fixtures, crew hours), assigns a Social Impact Score, and flags Hospital/School High Priority Zones.",
+      "CivicSnap Vision AI estimates repair materials (kg of asphalt, LED fixtures, crew hours), assigns a Social Impact Score, and flags Hospital/School High Priority Zones.",
     icon: Wrench,
   },
   {
@@ -97,7 +97,7 @@ const BENTO_FEATURES = [
     title: "Anti-Fraud Fix Verification",
     subtitle: "Before-vs-After Accountability",
     description:
-      "Contractors cannot silently mark tickets Resolved. Gemini Vision compares the original issue photo against proof-of-fix images and flags duplicate or incomplete patches.",
+      "Contractors cannot silently mark tickets Resolved. CivicSnap Vision AI compares the original issue photo against proof-of-fix images and flags duplicate or incomplete patches.",
     metric: "94.8% Match Confidence",
     icon: ShieldCheck,
     href: "/admin?mode=judge",
@@ -230,7 +230,7 @@ export function HomeLandingClient() {
                         &ldquo;{HINGLISH_DEMO_PHRASE}&rdquo;
                       </span>
                       <span className="block text-slate-500">
-                        Instant Hinglish-to-English Gemini civic structuring
+                        Instant Hinglish-to-English CivicSnap AI structuring
                       </span>
                     </p>
                   </div>
@@ -374,10 +374,10 @@ export function HomeLandingClient() {
                   </div>
                 </div>
 
-                {/* Gemini Engineering Audit Calculation Strip */}
+                {/* CivicSnap AI Engineering Audit Calculation Strip */}
                 <div className="p-5">
                   <p className="text-xs font-semibold text-blue-600">
-                    Gemini Vision Engineering Audit
+                    CivicSnap Vision AI Engineering Audit
                   </p>
                   <div className="mt-3 grid grid-cols-3 gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 p-3 text-center">
                     <div>

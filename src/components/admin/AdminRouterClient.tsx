@@ -90,7 +90,7 @@ export function AdminRouterClient() {
             }`}
           >
             <Database size={15} aria-hidden="true" />
-            <span>Live Firestore Admin</span>
+            <span>Municipal Operations Console</span>
           </button>
         </div>
 

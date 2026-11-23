@@ -133,7 +133,7 @@ export function BeforeAfterComparison({
           }`}
         >
           <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
-            Gemini Vision Assessment
+            CivicSnap Vision AI Assessment
           </p>
           <p className="mt-1 leading-6">{verificationReason}</p>
           {isDemo && (

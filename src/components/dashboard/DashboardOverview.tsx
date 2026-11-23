@@ -239,7 +239,7 @@ export function DashboardOverview({
           }
           description={
             issues.length === 0
-              ? "Live dashboard charts populate automatically from approved public reports in Firebase Firestore. Submit a report or explore working filters and charts in the read-only demo now."
+              ? "Live dashboard charts populate automatically from approved public reports on CivicSnap Cloud. Submit a report or explore working filters and charts in the read-only demo now."
               : "Adjust the date range, ward, or category filters above to inspect other CivicSnap reports."
           }
           primaryAction={

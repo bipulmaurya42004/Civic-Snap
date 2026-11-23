@@ -20,7 +20,7 @@ export function LiveIssuesWorkspace() {
       .catch(() => {
         if (!cancelled) {
           setError(
-            "Unable to fetch approved public reports from Firestore right now."
+            "Unable to fetch approved public reports right now."
           );
         }
       })
@@ -36,7 +36,7 @@ export function LiveIssuesWorkspace() {
   if (loading) {
     return (
       <LoadingState
-        label="Loading approved public reports from Firestore..."
+        label="Loading approved public civic reports..."
         rows={3}
       />
     );
@@ -55,8 +55,8 @@ export function LiveIssuesWorkspace() {
       <IssueBrowser
         issues={issues}
         areas={PILOT_LOCALITIES}
-        emptyTitle="No approved public reports in Firestore yet"
-        emptyDescription="Submit a civic issue after signing in—once a project admin approves its public summary in Firestore, it will appear here automatically. You can also explore sample records in Demo Mode."
+        emptyTitle="No approved public reports yet"
+        emptyDescription="Submit a civic issue after signing in—once a staff reviewer approves its public summary, it will appear here automatically. You can also explore sample records in Demo Mode."
       />
     </div>
   );

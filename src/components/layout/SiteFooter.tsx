@@ -70,7 +70,7 @@ export function SiteFooter() {
             <p className="mt-1.5 text-sm leading-6 text-blue-100/90">
               Civic accountability for Bengaluru wards — report in Hinglish,
               capture live street evidence, audit contractor materials with
-              Gemini AI, and earn neighborhood café perks.
+              CivicSnap AI, and earn neighborhood café perks.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2.5">
               {SOCIAL_LINKS.map((social) => {

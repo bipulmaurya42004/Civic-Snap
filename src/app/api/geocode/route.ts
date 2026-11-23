@@ -76,18 +76,74 @@ export async function GET(request: NextRequest) {
       });
     }
   } catch {
-    // Fall through gracefully to deterministic ward coordinate fallback
+    // Fall through to secondary reverse geocoder
   } finally {
     clearTimeout(timer);
   }
 
-  // Graceful fallback when OpenStreetMap Nominatim is offline or rate-limited
+  // Secondary free global reverse geocoder (BigDataCloud) for reliable Indian & global addresses
+  const bdcController = new AbortController();
+  const bdcTimer = setTimeout(() => bdcController.abort(), 6000);
+  try {
+    const bdcUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(
+      String(roundedLat)
+    )}&longitude=${encodeURIComponent(String(roundedLng))}&localityLanguage=en`;
+    const bdcRes = await fetch(bdcUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: bdcController.signal,
+      cache: "no-store",
+    });
+
+    if (bdcRes.ok) {
+      const bdcData = (await bdcRes.json()) as {
+        locality?: string;
+        city?: string;
+        principalSubdivision?: string;
+        postcode?: string;
+      };
+      const area =
+        bdcData.locality?.trim() || bdcData.city?.trim() || "";
+      const city = bdcData.city?.trim() || bdcData.principalSubdivision?.trim() || "";
+      const parts = [area, city, bdcData.postcode?.trim()].filter(
+        (p, idx, arr): p is string =>
+          Boolean(p) &&
+          arr.findIndex((x) => x?.toLowerCase() === p?.toLowerCase()) === idx
+      );
+      if (parts.length > 0) {
+        const readableAddress = parts.join(", ").slice(0, 160);
+        const localityName = (nearestWard?.ward ?? area ?? city).slice(0, 80);
+        const priority = detectHighPriorityZone({
+          detectedAddress: readableAddress,
+          locality: localityName,
+          lat: roundedLat,
+          lng: roundedLng,
+        });
+        return NextResponse.json({
+          lat: roundedLat,
+          lng: roundedLng,
+          readableAddress,
+          localityName,
+          matchedWard: nearestWard?.ward ?? null,
+          highPriorityZone: priority.isHighPriority,
+          highPriorityReason: priority.reason,
+          source: "bigdatacloud",
+        });
+      }
+    }
+  } catch {
+    // Fall through to honest coordinate-based fallback
+  } finally {
+    clearTimeout(bdcTimer);
+  }
+
+  // Honest fallback when external geocoders are offline — never mislabel non-Bengaluru GPS as Bengaluru
   const fallbackAddress = nearestWard
     ? nearestWard.sampleStreet
-    : `GPS (${roundedLat}, ${roundedLng})`;
+    : `Live GPS (${roundedLat}, ${roundedLng})`;
   const fallbackLocality = nearestWard
     ? nearestWard.ward
-    : `Bengaluru (${roundedLat}, ${roundedLng})`;
+    : `GPS (${roundedLat}, ${roundedLng})`;
   const priority = detectHighPriorityZone({
     detectedAddress: fallbackAddress,
     locality: fallbackLocality,

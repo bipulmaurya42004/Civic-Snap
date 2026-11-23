@@ -386,20 +386,118 @@ export function getPriorityTierFromScore(score: number): {
 }
 
 /**
- * Builds the Gemini Vision Engineering Auditing prompt for /report photo analysis.
+ * Deterministic pre-filter that catches obvious gibberish, keyboard mash,
+ * placeholder test strings, or clearly non-civic subjects (e.g. laptops,
+ * phones, personal gadgets) before/alongside CivicSnap AI evaluation.
+ */
+export function validateCivicReportText(input: {
+  title: string;
+  description: string;
+  locality?: string;
+}): { valid: boolean; reason?: string } {
+  const title = input.title.replace(/\s+/g, " ").trim();
+  const description = input.description.replace(/\s+/g, " ").trim();
+  const combined = `${title} ${description}`.trim();
+
+  if (title.length < 5) {
+    return {
+      valid: false,
+      reason: "Please write a clear civic issue title (at least 5 characters).",
+    };
+  }
+  if (description.length < 10) {
+    return {
+      valid: false,
+      reason:
+        "Please describe the actual street, sanitation, streetlight, or infrastructure issue (at least 10 characters).",
+    };
+  }
+
+  // Catch repeated single characters or keyboard mashing (e.g. "aaaaaaa", "asdfghjkl", "qwerty")
+  if (/(.)\1{4,}/i.test(combined)) {
+    return {
+      valid: false,
+      reason:
+        "This text looks like repeated placeholder characters rather than a genuine civic report.",
+    };
+  }
+
+  const keyboardMashRegex =
+    /\b(asdf|sdfg|dfgh|fghj|ghjk|hjkl|qwer|wert|erty|rtyu|tyui|yuio|uiop|zxcv|xcvb|cvbn|vbnm|abcd|efgh|ijkl|mnop|12345|test\s*test|testing\s*123|blah\s*blah|lorem\s*ipsum)\b/i;
+  if (keyboardMashRegex.test(combined)) {
+    return {
+      valid: false,
+      reason:
+        "CivicSnap AI detected placeholder or random keyboard text. Please describe a real local civic issue.",
+    };
+  }
+
+  // Check alphabetic ratio and vowel presence (catches random consonant strings like "xkcdjflskdjf")
+  const words = combined
+    .toLowerCase()
+    .split(/[^a-z\u0900-\u097f]+/)
+    .filter((w) => w.length >= 2);
+  if (words.length < 3) {
+    return {
+      valid: false,
+      reason:
+        "Please enter a meaningful description with at least a few real words explaining the public issue.",
+    };
+  }
+
+  const latinWords = words.filter((w) => /^[a-z]+$/.test(w));
+  if (latinWords.length >= 2) {
+    const gibberishWords = latinWords.filter(
+      (w) =>
+        (w.length >= 5 && !/[aeiouy]/.test(w)) ||
+        /[bcdfghjklmnpqrstvwxz]{5,}/.test(w)
+    );
+    if (gibberishWords.length >= Math.ceil(latinWords.length * 0.4)) {
+      return {
+        valid: false,
+        reason:
+          "The entered text appears to contain random or unreadable characters. Please write a clear civic issue report.",
+      };
+    }
+  }
+
+  // Catch obvious non-civic personal gadget / indoor items unless paired with real civic terms
+  const nonCivicGadgetRegex =
+    /\b(laptop|macbook|desktop|keyboard|mouse|monitor|iphone|smartphone|charger|headphones|earbuds|playstation|xbox|selfie|my\s+room|bedroom|homework|exam|assignment|netflix|instagram\s+reel)\b/i;
+  const realCivicKeywordRegex =
+    /\b(pothole|gaddha|road|sadak|street|asphalt|footpath|sidewalk|pavement|drain|drainage|sewer|manhole|waterlog|flood|garbage|waste|kachra|kooda|trash|dump|bin|dustbin|sanitation|streetlight|street\s*light|lamp|pole|batti|andhera|dark|wire|cable|traffic|signal|signage|park|public|municipal|ward|bbmp|bridge|flyover|bus\s*stop|crosswalk|pipe|leak|water\s*supply|tree\s*fell|fallen\s*tree|encroachment|debris|rubble|crack|broken)\b/i;
+
+  if (nonCivicGadgetRegex.test(combined) && !realCivicKeywordRegex.test(combined)) {
+    return {
+      valid: false,
+      reason:
+        "CivicSnap only accepts public outdoor civic infrastructure issues (roads, garbage, streetlights, drainage, footpaths), not personal devices or indoor items.",
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Builds the strict Human-Brain CivicSnap Vision Authenticity & Engineering Audit prompt.
  */
 export function buildPhotoAuditPrompt(locality?: string): string {
   const locLine = locality?.trim()
     ? `Reported locality hint: ${locality.trim().slice(0, 80)}.`
     : "";
   return [
-    "Analyze this civic issue photograph as a municipal civil engineering auditor.",
-    "Return a professional English civic report with:",
-    "1. title (concise, 5-110 chars), category (Pothole, Garbage, Streetlight, or Other), and description (factual, 20-450 chars).",
-    "2. surroundingLandmarks: Identify visible surrounding context (e.g., near a school, hospital, high-traffic market, residential street, or commuter junction) for priority scoring.",
-    "3. materialEstimate: Rough estimate of repair materials and crew labor needed (e.g., kgs of asphalt, liters of paint, replacement lamp unit, or hours of labor).",
-    "4. socialImpactScore: Integer from 1 to 100 based on location sensitivity and safety severity.",
-    "5. economicCostOfDelay: Concise estimate of the hidden 30-day economic cost to citizens (vehicle damage, delays, health or accident risk) if left unfixed.",
+    "Act like a strict, experienced human municipal civil inspector reviewing a citizen-submitted photo.",
+    "STEP 1 — AUTHENTICITY GATE (CRITICAL): Honestly identify what is actually in the photograph first.",
+    "Set isGenuineCivicIssue = true ONLY if the image clearly shows a real outdoor public civic infrastructure or municipal sanitation problem (such as a road pothole, cracked/broken pavement, overflowing garbage/waste dump, broken/dark streetlight pole, open/clogged drain, waterlogged street, broken footpath, fallen tree/pole, leaking public water pipe, or damaged public road hazard).",
+    "You MUST set isGenuineCivicIssue = false if the photo shows a laptop, computer screen, monitor, phone, keyboard, indoor desk/room/ceiling/wall, selfie/human face/portrait, pet/animal, food, document/textbook, screenshot/meme/cartoon, car interior, random household object, completely dark/blank/unintelligible blur, or a clean undamaged road with NO visible civic issue.",
+    "ALWAYS fill detectedSubject with an honest, plain-English description of what you actually see in the photo (e.g., 'A laptop on an indoor desk' or 'A deep waterlogged asphalt pothole on a city street').",
+    "If isGenuineCivicIssue is FALSE: set socialImpactScore = 0, materialEstimate = '', surroundingLandmarks = '', economicCostOfDelay = '', title = '', description = '', and write a polite, specific rejectionReason explaining what was seen and why it is not a valid civic issue report.",
+    "STEP 2 — ENGINEERING AUDIT (ONLY IF isGenuineCivicIssue is TRUE):",
+    "1. title (concise, 5-110 chars), category (Pothole, Garbage, Streetlight, or Other), and description (factual, 20-450 chars) grounded strictly in what is visible.",
+    "2. surroundingLandmarks: Identify visible surrounding context (e.g., school, hospital, market, residential street, or commuter road) for priority scoring.",
+    "3. materialEstimate: Realistic estimate of repair materials and crew labor needed ONLY for the visible defect (e.g., kgs of asphalt, replacement LED unit, compactor trip, labor hours). Never fabricate material estimates for non-civic photos.",
+    "4. socialImpactScore: Calibrated integer 1 to 100 based on genuine safety severity and surrounding public sensitivity (minor curb crack ~30-50, moderate issue ~55-75, severe safety/hospital/school hazard ~78-95).",
+    "5. economicCostOfDelay: Realistic 30-day economic/safety impact to citizens in ₹ if left unfixed.",
     locLine,
   ]
     .filter(Boolean)
@@ -407,13 +505,38 @@ export function buildPhotoAuditPrompt(locality?: string): string {
 }
 
 /**
- * Deterministic Demo Mode photo audit fallback used ONLY when GEMINI_API_KEY
- * is not configured on the server.
+ * Builds the strict Human-Brain CivicSnap AI Report Text Authenticity prompt.
+ */
+export function buildReportValidationPrompt(input: {
+  title: string;
+  description: string;
+  category: string;
+  locality: string;
+}): string {
+  return [
+    "Act like a sharp human municipal moderator verifying whether a citizen's submitted text describes a GENUINE public civic infrastructure issue.",
+    `Category selected: ${input.category.slice(0, 40)}`,
+    `Location: ${input.locality.slice(0, 100)}`,
+    `Title: "${input.title.slice(0, 120)}"`,
+    `Description: "${input.description.slice(0, 600)}"`,
+    "Set isGenuine = true ONLY if the title and description meaningfully describe a real-world public civic problem (road damage, pothole, garbage, broken streetlight, drainage, waterlogging, public safety hazard, broken footpath, fallen tree, water leak, etc.) in English, Hindi, or Hinglish.",
+    "Set isGenuine = false if the text is gibberish, keyboard mash, random letters/numbers, placeholder test text ('test', 'hello', 'abcde'), jokes, spam, personal tech/gadget problems (like laptop/phone issues), private household complaints, or unrelated chatter.",
+    "Provide a clear 1-sentence reason. If isGenuine is true, also provide a realistic calibrated suggestedScore (15 to 95) matching actual severity (0 if false).",
+  ].join("\n");
+}
+
+/**
+ * Deterministic Demo Mode photo audit fallback used ONLY for built-in /demo/ sample images
+ * when no server AI key is configured.
  */
 export function generateDemoPhotoAudit(
   fileName?: string,
   locality?: string
 ): {
+  isGenuineCivicIssue: boolean;
+  detectedSubject: string;
+  rejectionReason: string;
+  confidence: number;
   title: string;
   category: IssueCategory;
   categoryDisplay: string;
@@ -430,6 +553,10 @@ export function generateDemoPhotoAudit(
 
   if (/\b(waste|garbage|trash|bin|kachra|dump)\b/.test(hint)) {
     return {
+      isGenuineCivicIssue: true,
+      detectedSubject: "Overflowing roadside municipal waste pile next to sidewalk",
+      rejectionReason: "",
+      confidence: 92,
       title: `Overflowing roadside waste accumulation near ${area}`.slice(0, 120),
       category: "waste",
       categoryDisplay: "Garbage",
@@ -447,6 +574,10 @@ export function generateDemoPhotoAudit(
 
   if (/\b(light|lamp|pole|dark|street)\b/.test(hint)) {
     return {
+      isGenuineCivicIssue: true,
+      detectedSubject: "Unlit municipal streetlight pole along evening street corridor",
+      rejectionReason: "",
+      confidence: 90,
       title: `Non-functional streetlight fixture along ${area}`.slice(0, 120),
       category: "streetlight",
       categoryDisplay: "Streetlight",
@@ -463,6 +594,10 @@ export function generateDemoPhotoAudit(
   }
 
   return {
+    isGenuineCivicIssue: true,
+    detectedSubject: "Damaged asphalt pothole cavity on active city road",
+    rejectionReason: "",
+    confidence: 94,
     title: `Asphalt pothole and curb-lane surface damage at ${area}`.slice(0, 120),
     category: "pothole",
     categoryDisplay: "Pothole",

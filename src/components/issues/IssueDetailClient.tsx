@@ -52,7 +52,7 @@ export function IssueDetailClient({
       .catch(() => {
         if (!cancelled) {
           setFetchError(
-            "Unable to load this report from Firestore right now."
+            "Unable to load this civic report right now."
           );
         }
       })
@@ -71,7 +71,7 @@ export function IssueDetailClient({
     return (
       <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
         <LoadingState
-          label={`Loading report ${reportId} from Firestore...`}
+          label={`Loading civic report ${reportId}...`}
           rows={4}
         />
       </div>
@@ -261,7 +261,7 @@ export function IssueDetailClient({
                 <dt className="text-slate-500">AI Verification</dt>
                 <dd className="mt-1 font-medium text-slate-900">
                   {issue.verificationStatus === "verified"
-                    ? "Verified by Gemini Vision"
+                    ? "Verified by CivicSnap Vision AI"
                     : issue.verificationStatus === "flagged"
                       ? "Flagged for re-inspection"
                       : issue.aiSuggestionNote

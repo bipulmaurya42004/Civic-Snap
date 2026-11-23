@@ -4,7 +4,7 @@ import { LiveDashboardWorkspace } from "@/components/dashboard/LiveDashboardWork
 export const metadata: Metadata = {
   title: "City Dashboard",
   description:
-    "View Bengaluru ward-wise breakdowns, category distributions, and status progress for civic reports stored in Firebase Firestore on CivicSnap.",
+    "View Bengaluru ward-wise breakdowns, category distributions, and live resolution status progress on CivicSnap.",
 };
 
 export default function DashboardPage() {
@@ -19,7 +19,7 @@ export default function DashboardPage() {
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
           Track ward-wise breakdowns across Bengaluru pilot localities alongside
-          category and resolution status counts from Firebase Firestore. Fewer
+          live category and resolution status counts on CivicSnap. Fewer
           reports in a ward can reflect lower participation rather than fewer
           local issues.
         </p>

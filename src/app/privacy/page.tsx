@@ -25,8 +25,8 @@ const PRIVACY_SECTIONS = [
     body: "Sharing browser GPS coordinates is optional. If you decline location permission or prefer not to share device coordinates, you can select a pilot locality or type an area name manually without blocking report submission.",
   },
   {
-    title: "5. Optional AI category suggestions",
-    body: "AI analysis is always opt-in. Before requesting a suggestion (Milestone 3), CivicSnap informs you that your photo will be sent server-side to our AI provider (Gemini) to suggest a category, short title, and short description. You can skip AI completely and enter every field manually.",
+    title: "5. CivicSnap AI authenticity & engineering analysis",
+    body: "Uploaded photos and report descriptions are inspected server-side by CivicSnap AI to verify genuine civic issues, filter out spam or non-civic images, and estimate repair materials and priority scores.",
   },
   {
     title: "6. Opt-in citizen leaderboard",

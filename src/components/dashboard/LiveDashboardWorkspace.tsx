@@ -19,7 +19,7 @@ export function LiveDashboardWorkspace() {
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Could not load live Firestore dashboard metrics right now.");
+          setError("Could not load live dashboard metrics right now.");
         }
       })
       .finally(() => {
@@ -34,7 +34,7 @@ export function LiveDashboardWorkspace() {
   if (loading) {
     return (
       <LoadingState
-        label="Loading live CivicSnap Firestore metrics..."
+        label="Loading live CivicSnap dashboard metrics..."
         rows={3}
       />
     );

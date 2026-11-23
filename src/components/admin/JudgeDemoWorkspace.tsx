@@ -95,7 +95,7 @@ export function JudgeDemoWorkspace() {
                 <strong className="font-semibold text-slate-900">
                   Authorised Staff Session ({user?.email}):
                 </strong>{" "}
-                Inspect Before-vs-After repair photos, Gemini Vision match
+                Inspect Before-vs-After repair photos, CivicSnap Vision AI match
                 scores, and approve or reject contractor claims.
               </>
             ) : (
@@ -103,12 +103,9 @@ export function JudgeDemoWorkspace() {
                 <strong className="font-semibold text-slate-900">
                   Read-Only Public Audit View:
                 </strong>{" "}
-                You can inspect all contractor Before-vs-After photos and AI
-                match scores. Sign in with an authorised staff account (
-                <code className="rounded bg-white/80 px-1 py-0.5 font-mono text-xs text-slate-700">
-                  NEXT_PUBLIC_ADMIN_EMAILS
-                </code>
-                ) to approve or reject repairs.
+                You can inspect all contractor Before-vs-After photos and CivicSnap AI
+                match scores. Sign in with an authorised municipal staff account
+                to approve or reject repairs.
               </>
             )}
           </p>

@@ -5,7 +5,7 @@ import { ProfileWorkspace } from "@/components/profile/ProfileWorkspace";
 export const metadata: Metadata = {
   title: "My Profile",
   description:
-    "Manage your CivicSnap display alias, public leaderboard opt-in preference, and submitted Firestore reports.",
+    "Manage your CivicSnap display alias, public leaderboard opt-in preference, and submitted civic reports.",
 };
 
 export default function ProfilePage() {
@@ -19,15 +19,15 @@ export default function ProfilePage() {
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Manage your chosen display alias, control whether you appear on the
           public recognition leaderboard, and track every report you have
-          submitted to Firestore.
+          submitted on CivicSnap.
         </p>
       </div>
 
       <ProfileWorkspace />
 
       <p className="mt-6 text-xs text-slate-500">
-        Questions about how private report fields are stored in Firebase
-        Firestore? Read our{" "}
+        Questions about how private report fields are stored securely on
+        CivicSnap Cloud? Read our{" "}
         <Link
           href="/privacy"
           className="font-medium text-[#2563EB] hover:underline"

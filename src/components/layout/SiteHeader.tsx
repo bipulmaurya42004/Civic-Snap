@@ -218,10 +218,10 @@ export function SiteHeader() {
           </div>
         </div>
 
-        {/* Mobile Top Navigation Strip (keeps Explore Issues, Leaderboard, Rewards Store, Dashboard always accessible at the top on phones) */}
+        {/* Mobile Top Navigation Strip (keeps Explore Issues, Leaderboard, Rewards Store, Dashboard always visible without clipping on phones) */}
         <nav
           aria-label="Mobile quick navigation"
-          className="flex md:hidden items-center gap-1 overflow-x-auto border-t border-slate-100 bg-slate-50/90 px-3 py-1.5"
+          className="flex md:hidden items-center justify-between gap-1 border-t border-slate-100 bg-slate-50/90 px-2 py-1.5"
         >
           {PRIMARY_NAV_ITEMS.map((item) => {
             const isActive = item.matchPrefixes.some(
@@ -232,7 +232,7 @@ export function SiteHeader() {
               <Link
                 key={`mobile-${item.href}`}
                 href={item.href}
-                className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors ${
+                className={`inline-flex shrink-0 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap transition-colors ${
                   isActive
                     ? "bg-blue-600 text-white shadow-xs"
                     : "text-slate-600 hover:bg-white hover:text-slate-900"
@@ -240,7 +240,7 @@ export function SiteHeader() {
               >
                 {item.isStaff && (
                   <Shield
-                    size={12}
+                    size={11}
                     aria-hidden="true"
                     className={isActive ? "text-blue-100" : "text-slate-400"}
                   />

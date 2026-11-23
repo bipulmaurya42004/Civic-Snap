@@ -62,7 +62,7 @@ export function AdminWorkspace() {
       setReports(items);
     } catch {
       setError(
-        "Could not load reports from Firestore. Verify your verified admin account and Firestore security rules."
+        "Could not load incoming civic reports right now. Please verify your authorised staff account permissions."
       );
     } finally {
       setLoading(false);
@@ -123,7 +123,7 @@ export function AdminWorkspace() {
   if (!authReady) {
     return (
       <LoadingState
-        label="Verifying Firebase Authentication admin access..."
+        label="Verifying CivicSnap staff session..."
         rows={3}
       />
     );
@@ -161,9 +161,9 @@ export function AdminWorkspace() {
                 </>
               ) : (
                 <>
-                  This Civic Management Admin Dashboard is restricted strictly to
-                  verified CivicSnap administrators. Please sign in with an
-                  authorised admin account through Firebase Authentication.
+                  This Civic Management Operations Console is restricted strictly to
+                  verified CivicSnap staff administrators. Please sign in with an
+                  authorised staff account to continue.
                 </>
               )}
             </p>
@@ -241,7 +241,7 @@ export function AdminWorkspace() {
             {stats.total}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            All Firestore reports submitted by residents
+            All live civic reports submitted by residents
           </p>
         </div>
 
@@ -301,7 +301,7 @@ export function AdminWorkspace() {
 
       {/* Management Table */}
       {loading ? (
-        <LoadingState label="Loading incoming Firestore reports..." rows={3} />
+        <LoadingState label="Loading incoming live civic reports..." rows={3} />
       ) : reports.length === 0 ? (
         <EmptyState
           icon={<ShieldCheck size={20} aria-hidden="true" />}

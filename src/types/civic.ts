@@ -137,12 +137,24 @@ export interface VoiceToReportResponse {
 }
 
 export interface PhotoAuditResponse extends EngineeringInsights {
+  isGenuineCivicIssue: boolean;
+  detectedSubject: string;
+  rejectionReason?: string;
+  confidence?: number;
   title: string;
   category: IssueCategory;
   categoryDisplay: string;
   description: string;
   demoMode: boolean;
   notice?: string;
+}
+
+export interface ReportAuthenticityResponse {
+  isGenuine: boolean;
+  reason: string;
+  suggestedScore?: number;
+  suggestedCategory?: IssueCategory;
+  demoMode: boolean;
 }
 
 export interface FixVerificationResponse {

@@ -27,7 +27,7 @@ const FAQ_ITEMS: readonly FaqItem[] = [
     id: "contractor-audits",
     question: "How do AI contractor material audits prevent fake repairs?",
     answer:
-      "When a citizen snaps an issue, Gemini Vision estimates repair materials (such as kg of hot-mix asphalt or LED fixtures) and a 30-day cost of delay. Before a ticket can close, contractors upload an After photo; Gemini Vision compares both photos for location match and repair quality, flagging duplicate or incomplete patches.",
+      "When a citizen snaps an issue, CivicSnap Vision AI inspects photo authenticity, estimates repair materials (such as kg of hot-mix asphalt or LED fixtures), and computes a 30-day cost of delay. Before a ticket can close, contractors upload an After photo; CivicSnap Vision AI compares both photos for location match and repair quality, flagging duplicate or incomplete patches.",
   },
   {
     id: "hinglish-voice",

@@ -38,8 +38,10 @@ import {
   type EngineeringInsights,
   type IssueCategory,
   type PhotoAuditResponse,
+  type ReportAuthenticityResponse,
   type VoiceToReportResponse,
 } from "@/types/civic";
+import { validateCivicReportText } from "@/lib/ai-civic-helpers";
 import {
   getCategoryLabel,
   parseFirestoreSubmitError,
@@ -188,14 +190,24 @@ export function ReportComposerClient() {
   const [fieldVoiceInterim, setFieldVoiceInterim] = useState("");
   const [fieldVoiceError, setFieldVoiceError] = useState<string | null>(null);
 
-  // AI Engineering Audit state (default realistic Bengaluru baseline chip until photo audited)
+  // AI Authenticity & Engineering Audit state (never show fake default scores before real inspection)
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const [photoAuditStatus, setPhotoAuditStatus] = useState<
+    "idle" | "checking" | "verified" | "rejected" | "error"
+  >("idle");
+  const [detectedPhotoSubject, setDetectedPhotoSubject] = useState<string | null>(
+    null
+  );
+  const [photoRejectionReason, setPhotoRejectionReason] = useState<string | null>(
+    null
+  );
   const [engineeringInsights, setEngineeringInsights] =
     useState<EngineeringInsights | null>(null);
   const [auditNotice, setAuditNotice] = useState<string | null>(null);
 
   // Submission state
   const [submitting, setSubmitting] = useState(false);
+  const [validatingReport, setValidatingReport] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<SubmittedSummary | null>(null);
 
@@ -265,20 +277,100 @@ export function ReportComposerClient() {
     lng: gpsCoords?.lng,
   });
 
-  // Dynamic AI estimator chip values
+  // Authentic AI estimator values — never invent scores or asphalt weights for unverified or rejected photos!
   const urgencyScore =
-    engineeringInsights?.socialImpactScore ??
-    (priorityZoneCheck.isHighPriority ? 92 : category === "pothole" ? 88 : 79);
+    photoAuditStatus === "verified" && engineeringInsights
+      ? engineeringInsights.socialImpactScore
+      : null;
 
   const estimatedMaterialShort =
-    engineeringInsights?.materialEstimate ??
-    (category === "pothole"
-      ? "~140 kg Asphalt · 3 labor hrs"
-      : category === "streetlight"
-        ? "2× 70W LED Fixtures · 2 labor hrs"
-        : category === "waste"
-          ? "1 Compactor Load · 25L Disinfectant"
-          : "~65 kg Rapid Mortar · 2 labor hrs");
+    photoAuditStatus === "verified" && engineeringInsights?.materialEstimate
+      ? engineeringInsights.materialEstimate
+      : null;
+
+  const runPhotoAuditInternal = async (
+    targetFile: File | null,
+    useSample: boolean
+  ): Promise<{ accepted: boolean; reason?: string }> => {
+    if (!targetFile && !useSample) {
+      return { accepted: true };
+    }
+
+    setAnalyzingPhoto(true);
+    setPhotoAuditStatus("checking");
+    setPhotoError(null);
+    setPhotoRejectionReason(null);
+    setDetectedPhotoSubject(null);
+    setAuditNotice(null);
+
+    try {
+      let compactPayload: { base64: string; mimeType: string } | undefined;
+      if (targetFile) {
+        compactPayload = await fileToCompactBase64(targetFile, 1024);
+      }
+
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "analyze_photo",
+          image: compactPayload,
+          imageUrl: !targetFile && useSample ? "/demo/pothole.jpg" : undefined,
+          fileName: targetFile?.name ?? "pothole.jpg",
+          locality: effectiveLocality,
+        }),
+      });
+
+      const data = (await res.json()) as PhotoAuditResponse & { error?: string };
+      if (!res.ok) {
+        setPhotoAuditStatus("error");
+        setEngineeringInsights(null);
+        const errMsg =
+          data.error || "Could not verify photo with CivicSnap AI right now.";
+        setPhotoError(errMsg);
+        return { accepted: false, reason: errMsg };
+      }
+
+      setDetectedPhotoSubject(data.detectedSubject || null);
+
+      // Strict human-brain rejection: laptop, selfie, indoor object, meme, clean road, etc.
+      if (!data.isGenuineCivicIssue) {
+        const reason =
+          data.rejectionReason ||
+          `Detected "${data.detectedSubject || "non-civic image"}". Please upload a real outdoor civic issue photo.`;
+        setPhotoAuditStatus("rejected");
+        setPhotoRejectionReason(reason);
+        setEngineeringInsights(null);
+        setAuditNotice(null);
+        return { accepted: false, reason };
+      }
+
+      setPhotoAuditStatus("verified");
+      setCategory(data.category);
+      if (!title.trim() || useSample) setTitle(data.title);
+      if (!description.trim() || useSample) setDescription(data.description);
+      setEngineeringInsights({
+        surroundingLandmarks: data.surroundingLandmarks,
+        materialEstimate: data.materialEstimate,
+        socialImpactScore: data.socialImpactScore,
+        economicCostOfDelay: data.economicCostOfDelay,
+      });
+      setAuditNotice(
+        data.notice ||
+          `CivicSnap AI verified genuine civic issue (${data.detectedSubject || data.categoryDisplay}) and estimated repair needs.`
+      );
+      return { accepted: true };
+    } catch {
+      setPhotoAuditStatus("error");
+      setEngineeringInsights(null);
+      const errMsg =
+        "Network error while contacting CivicSnap AI Vision. Tap 'Re-Verify Photo' to retry.";
+      setPhotoError(errMsg);
+      return { accepted: false, reason: errMsg };
+    } finally {
+      setAnalyzingPhoto(false);
+    }
+  };
 
   const processSelectedFile = async (file: File) => {
     const validation = validatePhotoFileMeta({
@@ -296,6 +388,9 @@ export function ReportComposerClient() {
     }
 
     setPhotoError(null);
+    setPhotoRejectionReason(null);
+    setDetectedPhotoSubject(null);
+    setEngineeringInsights(null);
     setAuditNotice(null);
     setIsSamplePhoto(false);
     setPhotoFile(file);
@@ -313,6 +408,9 @@ export function ReportComposerClient() {
     } catch {
       setCompressedKb(Math.min(94, Math.max(24, Math.round(file.size / 1024))));
     }
+
+    // Automatically inspect every uploaded/captured photo with CivicSnap AI so fake photos are caught immediately
+    void runPhotoAuditInternal(file, false);
   };
 
   const stopCameraStream = () => {
@@ -441,6 +539,9 @@ export function ReportComposerClient() {
       URL.revokeObjectURL(photoPreviewUrl);
     }
     setPhotoError(null);
+    setPhotoRejectionReason(null);
+    setDetectedPhotoSubject("Waterlogged road pothole along 100ft Road");
+    setPhotoAuditStatus("verified");
     setPhotoFile(null);
     setIsSamplePhoto(true);
     setPhotoPreviewUrl("/demo/pothole.jpg");
@@ -465,7 +566,7 @@ export function ReportComposerClient() {
         "₹42,000+ est. 30-day two-wheeler suspension & emergency delay impact",
     });
     setAuditNotice(
-      "Sample Indiranagar photo loaded & auto-compressed to 74 KB (<100KB target) with Gemini Engineering Insights."
+      "Sample verified road pothole loaded & auto-compressed to 74 KB with CivicSnap AI Engineering Insights."
     );
   };
 
@@ -478,6 +579,10 @@ export function ReportComposerClient() {
     setPhotoPreviewUrl(null);
     setIsSamplePhoto(false);
     setCompressedKb(null);
+    setPhotoAuditStatus("idle");
+    setDetectedPhotoSubject(null);
+    setPhotoRejectionReason(null);
+    setEngineeringInsights(null);
     setPhotoError(null);
     setCameraError(null);
     setAuditNotice(null);
@@ -488,63 +593,10 @@ export function ReportComposerClient() {
       setPhotoError("Upload a photo or load the sample photo first.");
       return;
     }
-
-    setAnalyzingPhoto(true);
-    setPhotoError(null);
-    setAuditNotice(null);
-
-    try {
-      let compactPayload: { base64: string; mimeType: string } | undefined;
-      if (photoFile) {
-        compactPayload = await fileToCompactBase64(photoFile, 1024);
-      }
-
-      const res = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "analyze_photo",
-          image: compactPayload,
-          fileName: photoFile?.name ?? "indiranagar_pothole.jpg",
-          locality: effectiveLocality,
-        }),
-      });
-
-      const data = (await res.json()) as PhotoAuditResponse & { error?: string };
-      if (!res.ok) {
-        setPhotoError(
-          data.error || "Could not analyze photo with Gemini AI right now."
-        );
-        return;
-      }
-
-      setCategory(data.category);
-      if (!title.trim() || isSamplePhoto) setTitle(data.title);
-      if (!description.trim() || isSamplePhoto) setDescription(data.description);
-      setEngineeringInsights({
-        surroundingLandmarks: data.surroundingLandmarks,
-        materialEstimate: data.materialEstimate,
-        socialImpactScore: data.socialImpactScore,
-        economicCostOfDelay: data.economicCostOfDelay,
-      });
-      setAuditNotice(
-        data.notice ||
-          "Gemini Vision calculated urgency score, surrounding landmarks, and contractor repair materials."
-      );
-    } catch {
-      setPhotoError(
-        "Network error while contacting Gemini Vision. You can still submit your report."
-      );
-    } finally {
-      setAnalyzingPhoto(false);
-    }
+    await runPhotoAuditInternal(photoFile, isSamplePhoto);
   };
 
-  const reverseGeocodeCoordinates = async (
-    lat: number,
-    lng: number,
-    isFallback = false
-  ) => {
+  const reverseGeocodeCoordinates = async (lat: number, lng: number) => {
     setGpsCoords({ lat, lng });
     try {
       const res = await fetch(
@@ -559,16 +611,12 @@ export function ReportComposerClient() {
           matchedWard?: string | null;
         };
         const address =
-          data.readableAddress?.trim() || "12th Main Rd, Indiranagar";
+          data.readableAddress?.trim() || `GPS (${lat}, ${lng})`;
         const localityLabel =
-          data.matchedWard || data.localityName || "Indiranagar";
+          data.matchedWard || data.localityName || `GPS (${lat}, ${lng})`;
 
         setDetectedAddress(address);
-        setGpsStatus(
-          isFallback
-            ? `Location Captured (Bengaluru Pilot GPS): ${address}`
-            : `Location Captured: ${localityLabel}`
-        );
+        setGpsStatus(`Live Location Captured: ${address}`);
 
         if (data.matchedWard) {
           setSelectedWardOption(data.matchedWard);
@@ -577,12 +625,18 @@ export function ReportComposerClient() {
           setManualLocality(localityLabel.slice(0, 80));
         }
       } else {
-        setDetectedAddress("12th Main Rd, Indiranagar, Bengaluru");
-        setGpsStatus("Location Captured: Indiranagar");
+        const coordText = `GPS (${lat}, ${lng})`;
+        setDetectedAddress(coordText);
+        setSelectedWardOption(MANUAL_WARD_OPTION);
+        setManualLocality(coordText);
+        setGpsStatus(`Live GPS Coordinates Captured: ${coordText}`);
       }
     } catch {
-      setDetectedAddress("12th Main Rd, Indiranagar, Bengaluru");
-      setGpsStatus("Location Captured: Indiranagar");
+      const coordText = `GPS (${lat}, ${lng})`;
+      setDetectedAddress(coordText);
+      setSelectedWardOption(MANUAL_WARD_OPTION);
+      setManualLocality(coordText);
+      setGpsStatus(`Live GPS Coordinates Captured: ${coordText}`);
     } finally {
       setGpsLoading(false);
     }
@@ -594,25 +648,53 @@ export function ReportComposerClient() {
     setGpsLoading(true);
 
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
-      void reverseGeocodeCoordinates(12.9789, 77.6447, true);
+      setGpsLoading(false);
+      setSelectedWardOption(MANUAL_WARD_OPTION);
+      setGpsError(
+        "Live GPS is not supported in this browser. Please enter your exact area & street address below."
+      );
       return;
     }
 
+    const onSuccess = (position: GeolocationPosition) => {
+      const lat = Number(position.coords.latitude.toFixed(5));
+      const lng = Number(position.coords.longitude.toFixed(5));
+      void reverseGeocodeCoordinates(lat, lng);
+    };
+
+    const onFinalError = (error: GeolocationPositionError) => {
+      setGpsLoading(false);
+      setSelectedWardOption(MANUAL_WARD_OPTION);
+      if (error.code === error.PERMISSION_DENIED) {
+        setGpsError(
+          "Location permission was blocked. Allow Location access in your browser bar (or open directly on HTTPS) — or type your exact locality and street address below."
+        );
+      } else {
+        setGpsError(
+          "Could not lock onto your live GPS signal right now. Please retry or type your exact locality and street address below."
+        );
+      }
+    };
+
+    // First try high-accuracy GPS; if it times out indoors, automatically retry with fast network/Wi-Fi geolocation
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const lat = Number(position.coords.latitude.toFixed(5));
-        const lng = Number(position.coords.longitude.toFixed(5));
-        void reverseGeocodeCoordinates(lat, lng, false);
+      onSuccess,
+      (firstError) => {
+        if (firstError.code === firstError.PERMISSION_DENIED) {
+          onFinalError(firstError);
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(onSuccess, onFinalError, {
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 120000,
+        });
       },
-      () => {
-        // Graceful Bengaluru Indiranagar GPS fallback so mobile/desktop reviewers never hit a dead end
-        void reverseGeocodeCoordinates(12.9789, 77.6447, true);
-      },
-      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 9000, maximumAge: 30000 }
     );
   };
 
-  const convertVoiceWithGemini = async (spokenText: string) => {
+  const convertVoiceWithAi = async (spokenText: string) => {
     const clean = spokenText.replace(/\s+/g, " ").trim();
     if (clean.length < 3) {
       setVoiceError("Please speak or type at least a few words in Hinglish.");
@@ -645,7 +727,7 @@ export function ReportComposerClient() {
       setCategory(data.category);
       setDescription(data.description);
       setVoiceNotice(
-        `Auto-filled Title, Category (${data.categoryDisplay || data.category}), and Description via Gemini AI.`
+        `Auto-filled Title, Category (${data.categoryDisplay || data.category}), and Description via CivicSnap AI.`
       );
     } catch (err) {
       setVoiceError(
@@ -728,7 +810,7 @@ export function ReportComposerClient() {
         setVoiceInterim("");
         if (spoken.length >= 3) {
           setVoiceTranscript(spoken);
-          void convertVoiceWithGemini(spoken);
+          void convertVoiceWithAi(spoken);
         }
       };
 
@@ -855,27 +937,98 @@ export function ReportComposerClient() {
   const handleSubmit = async () => {
     setFormError(null);
 
-    if (title.trim().length < 5) {
+    // 1. Block fake/irrelevant/non-civic photos strictly
+    if (photoAuditStatus === "checking" || analyzingPhoto) {
       setFormError(
-        "Please enter a clear issue title (at least 5 characters) or use Hinglish Voice to auto-fill."
+        "CivicSnap AI is still inspecting your uploaded photo. Please wait a second."
       );
       return;
     }
-    if (description.trim().length < 10) {
+    if (photoAuditStatus === "rejected") {
       setFormError(
-        "Please add a short description (at least 10 characters) so ward auditors can verify the issue."
+        photoRejectionReason ||
+          "Your uploaded photo was rejected by CivicSnap AI as a non-civic image. Remove it and upload a genuine outdoor civic issue photo."
       );
       return;
     }
+
+    // 2. Local fast gibberish / non-civic text guard
+    const textPreCheck = validateCivicReportText({
+      title,
+      description,
+      locality: effectiveLocality,
+    });
+    if (!textPreCheck.valid) {
+      setFormError(
+        textPreCheck.reason ||
+          "Please describe a genuine public civic issue with clear details."
+      );
+      return;
+    }
+
     if (effectiveLocality.length < 2) {
-      setFormError("Please select a Bengaluru ward or type your locality name.");
+      setFormError("Please detect your live location or enter your ward/locality.");
       return;
     }
 
     setSubmitting(true);
+    setValidatingReport(true);
 
     try {
-      // Real Firebase Firestore + Storage persistence when signed in with a verified email
+      // 3. If a photo is attached and hasn't been verified yet (e.g., transient error), verify it first
+      if (photoFile && photoAuditStatus !== "verified") {
+        const photoCheck = await runPhotoAuditInternal(photoFile, false);
+        if (!photoCheck.accepted) {
+          setFormError(
+            photoCheck.reason ||
+              "CivicSnap AI could not verify your uploaded photo as a genuine civic issue."
+          );
+          return;
+        }
+      }
+
+      // 4. Server-side CivicSnap AI text authenticity check (catches fake/random/non-civic entries)
+      let finalScore = urgencyScore ?? 0;
+      const valRes = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "validate_report",
+          title: title.trim(),
+          description: description.trim(),
+          category,
+          locality: effectiveLocality,
+        }),
+      });
+      const valData = (await valRes.json()) as Partial<ReportAuthenticityResponse> & {
+        error?: string;
+      };
+      if (!valRes.ok) {
+        setFormError(
+          valData.error ||
+            "CivicSnap AI could not verify report authenticity right now. Please try again."
+        );
+        return;
+      }
+      if (valData.isGenuine === false) {
+        setFormError(
+          `CivicSnap AI rejected this entry: ${
+            valData.reason ||
+            "Please enter a genuine outdoor civic infrastructure or sanitation report."
+          }`
+        );
+        return;
+      }
+      if (!finalScore && typeof valData.suggestedScore === "number") {
+        finalScore = valData.suggestedScore;
+      }
+      setValidatingReport(false);
+
+      const finalMaterialEstimate =
+        estimatedMaterialShort ??
+        "Pending field inspection (text-only report)";
+
+      // Real cloud database persistence when signed in with a verified email
       if (user && user.emailVerified) {
         try {
           await syncUserProfileOnSignIn(user, {
@@ -905,8 +1058,8 @@ export function ReportComposerClient() {
           photoFileName: photoFile?.name ?? (isSamplePhoto ? "pothole.jpg" : null),
           beforeImageURL,
           surroundingLandmarks: engineeringInsights?.surroundingLandmarks ?? null,
-          materialEstimate: estimatedMaterialShort,
-          socialImpactScore: urgencyScore,
+          materialEstimate: finalMaterialEstimate,
+          socialImpactScore: finalScore > 0 ? finalScore : null,
           economicCostOfDelay: engineeringInsights?.economicCostOfDelay ?? null,
           privateLat: gpsCoords?.lat ?? null,
           privateLng: gpsCoords?.lng ?? null,
@@ -924,13 +1077,13 @@ export function ReportComposerClient() {
           highPriority: priorityZoneCheck.isHighPriority,
           persistedToFirestore: true,
           pointsEarned: 50,
-          urgencyScore,
-          materialEstimate: estimatedMaterialShort,
+          urgencyScore: finalScore,
+          materialEstimate: finalMaterialEstimate,
         });
         return;
       }
 
-      // Interactive Preview Mode submission when guest / judge has not signed in yet
+      // Interactive Preview Mode submission when guest has not signed in yet
       const previewId = `CS-BLR-${Math.floor(400 + Math.random() * 550)}`;
       setSubmitted({
         id: previewId,
@@ -941,8 +1094,8 @@ export function ReportComposerClient() {
         highPriority: priorityZoneCheck.isHighPriority,
         persistedToFirestore: false,
         pointsEarned: 50,
-        urgencyScore,
-        materialEstimate: estimatedMaterialShort,
+        urgencyScore: finalScore,
+        materialEstimate: finalMaterialEstimate,
       });
     } catch (err) {
       const parsed = parseFirestoreSubmitError(
@@ -951,6 +1104,7 @@ export function ReportComposerClient() {
       );
       setFormError(parsed.message);
     } finally {
+      setValidatingReport(false);
       setSubmitting(false);
     }
   };
@@ -966,6 +1120,7 @@ export function ReportComposerClient() {
     setGpsCoords(null);
     setDetectedAddress(null);
     setGpsStatus(null);
+    setGpsError(null);
     setEngineeringInsights(null);
     setFormError(null);
     setSubmitted(null);
@@ -981,16 +1136,16 @@ export function ReportComposerClient() {
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
               {submitted.persistedToFirestore
-                ? "Saved to Firebase Firestore"
-                : "Interactive Bengaluru Preview Submitted"}
+                ? "Verified & Saved to CivicSnap Cloud"
+                : "Verified Preview Report Logged"}
             </span>
             <h2 className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900">
               Issue {submitted.id} logged · +{submitted.pointsEarned} CivicPoints
             </h2>
             <p className="mt-1.5 text-sm leading-6 text-slate-600">
               {submitted.persistedToFirestore
-                ? "Your report and AI engineering audit are stored securely in Firestore for municipal verification."
-                : "Your interactive preview submission passed all AI & GPS checks. Sign in with Google to persist future reports to your live Firestore profile."}
+                ? "Your report passed CivicSnap AI authenticity verification and is stored securely for municipal review."
+                : "Your report passed CivicSnap AI authenticity & GPS checks. Sign in with Google to save future reports to your live CivicSnap profile."}
             </p>
           </div>
         </div>
@@ -1004,18 +1159,23 @@ export function ReportComposerClient() {
           </div>
           <div>
             <dt className="text-xs font-medium text-slate-500">
-              Bengaluru Ward &amp; Category
+              Location &amp; Category
             </dt>
             <dd className="mt-0.5 font-semibold text-slate-900">
-              {submitted.locality} · {getCategoryLabel(submitted.category)}
+              {submitted.locality}
+              {submitted.address ? ` (${submitted.address})` : ""} ·{" "}
+              {getCategoryLabel(submitted.category)}
             </dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-slate-500">
-              AI Material Estimator
+              CivicSnap AI Material Audit
             </dt>
             <dd className="mt-0.5 font-semibold text-blue-700">
-              Urgency {submitted.urgencyScore}/100 · {submitted.materialEstimate}
+              {submitted.urgencyScore > 0
+                ? `Urgency ${submitted.urgencyScore}/100 · `
+                : ""}
+              {submitted.materialEstimate}
             </dd>
           </div>
           <div>
@@ -1068,7 +1228,7 @@ export function ReportComposerClient() {
 
   return (
     <PageTransition className="space-y-6">
-      {/* Compact Session Bar (Non-blocking for Judges/Guests; Live Firestore for Signed-In Users) */}
+      {/* Compact Session Bar (Non-blocking for Guests; Live Cloud Sync for Signed-In Users) */}
       {!user && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-xs sm:text-sm">
           <div className="flex items-center gap-2 text-slate-800">
@@ -1079,10 +1239,10 @@ export function ReportComposerClient() {
             />
             <span>
               <strong className="font-semibold text-slate-900">
-                Interactive Bengaluru Mode:
+                CivicSnap Quick Mode:
               </strong>{" "}
-              Test photo audit, GPS &amp; Hinglish voice right now — or sign in
-              to save directly to Firestore.
+              Test photo authenticity AI, live GPS &amp; Hinglish voice right now — or sign in
+              to save directly to your live CivicSnap profile.
             </span>
           </div>
           <button
@@ -1175,7 +1335,7 @@ export function ReportComposerClient() {
                       <Sparkles size={14} aria-hidden="true" />
                     )}
                     <span>
-                      {analyzingPhoto ? "Analyzing..." : "Gemini AI Audit"}
+                      {analyzingPhoto ? "Inspecting Photo..." : "CivicSnap AI Verify"}
                     </span>
                   </button>
 
@@ -1303,7 +1463,35 @@ export function ReportComposerClient() {
               </div>
             )}
 
-            {auditNotice && (
+            {photoAuditStatus === "checking" && (
+              <p
+                role="status"
+                className="mt-3 flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800"
+              >
+                <Loader2 size={14} className="animate-spin shrink-0" aria-hidden="true" />
+                <span>
+                  CivicSnap AI is inspecting your photo for real civic issue authenticity...
+                </span>
+              </p>
+            )}
+            {photoAuditStatus === "rejected" && photoRejectionReason && (
+              <div
+                role="alert"
+                className="mt-3 rounded-xl border border-rose-300 bg-rose-50 px-3.5 py-3 text-xs text-rose-800"
+              >
+                <p className="flex items-center gap-1.5 font-bold text-rose-900">
+                  <AlertCircle size={14} className="shrink-0" aria-hidden="true" />
+                  <span>Photo Rejected by CivicSnap AI</span>
+                </p>
+                {detectedPhotoSubject && (
+                  <p className="mt-1 font-semibold text-rose-800">
+                    Detected: {detectedPhotoSubject}
+                  </p>
+                )}
+                <p className="mt-1 leading-5 text-rose-700">{photoRejectionReason}</p>
+              </div>
+            )}
+            {auditNotice && photoAuditStatus === "verified" && (
               <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                 {auditNotice}
               </p>
@@ -1326,13 +1514,13 @@ export function ReportComposerClient() {
             )}
           </section>
 
-          {/* 2. Smart GPS & Bengaluru Ward Card */}
+          {/* 2. Live GPS & Location Card */}
           <section className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <MapPin size={17} className="text-blue-600" aria-hidden="true" />
                 <h2 className="font-[var(--font-heading)] text-base font-bold text-slate-900">
-                  2. Bengaluru GPS &amp; Ward
+                  2. Live GPS &amp; Location
                 </h2>
               </div>
               {priorityZoneCheck.isHighPriority && (
@@ -1357,8 +1545,8 @@ export function ReportComposerClient() {
                 )}
                 <span>
                   {gpsLoading
-                    ? "Detecting Bengaluru GPS..."
-                    : "Detect My Location"}
+                    ? "Fetching Live GPS Location..."
+                    : "Detect My Live Location"}
                 </span>
               </button>
 
@@ -1368,8 +1556,10 @@ export function ReportComposerClient() {
                   className="rounded-xl border border-emerald-200 bg-emerald-50/90 px-3.5 py-2.5 text-xs text-emerald-900"
                 >
                   <p className="font-semibold">{gpsStatus}</p>
-                  {detectedAddress && (
-                    <p className="mt-0.5 text-emerald-800">{detectedAddress}</p>
+                  {gpsCoords && (
+                    <p className="mt-0.5 text-[11px] text-emerald-800">
+                      Coordinates: {gpsCoords.lat}, {gpsCoords.lng}
+                    </p>
                   )}
                   {mapsUrl && (
                     <a
@@ -1399,7 +1589,7 @@ export function ReportComposerClient() {
                   htmlFor="bengaluru-ward-select"
                   className="block text-xs font-semibold text-slate-700"
                 >
-                  Bengaluru Pilot Ward
+                  City Ward / Area
                 </label>
                 <select
                   id="bengaluru-ward-select"
@@ -1421,18 +1611,38 @@ export function ReportComposerClient() {
                     htmlFor="manual-locality-input"
                     className="block text-xs font-semibold text-slate-700"
                   >
-                    Enter Ward / Locality Manually
+                    Your Exact Locality / City
                   </label>
                   <input
                     id="manual-locality-input"
                     type="text"
                     value={manualLocality}
                     onChange={(e) => setManualLocality(e.target.value)}
-                    placeholder="e.g., BTM Layout 2nd Stage"
+                    placeholder="e.g., Sector 62 Noida / BTM Layout / Gomti Nagar"
                     className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
                   />
                 </div>
               )}
+
+              <div>
+                <label
+                  htmlFor="report-street-address"
+                  className="block text-xs font-semibold text-slate-700"
+                >
+                  Exact Street / Landmark Address (Auto-filled by GPS or edit manually)
+                </label>
+                <input
+                  id="report-street-address"
+                  type="text"
+                  maxLength={160}
+                  value={detectedAddress ?? ""}
+                  onChange={(e) =>
+                    setDetectedAddress(e.target.value ? e.target.value : null)
+                  }
+                  placeholder="e.g., 100ft Road near CMH Hospital gate"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
+                />
+              </div>
             </div>
           </section>
         </div>
@@ -1500,7 +1710,7 @@ export function ReportComposerClient() {
                     {listening
                       ? "Listening in Hinglish — speak now..."
                       : convertingVoice
-                        ? "Gemini AI structuring your civic report..."
+                        ? "CivicSnap AI structuring your civic report..."
                         : "Tap the Mic & speak in Hinglish"}
                   </p>
                   {/* Animated Audio Waveform Bars */}
@@ -1549,13 +1759,13 @@ export function ReportComposerClient() {
                 aria-label="Hinglish transcript input"
                 value={voiceTranscript}
                 onChange={(e) => setVoiceTranscript(e.target.value)}
-                placeholder="Or type Hinglish here to auto-fill with Gemini AI..."
+                placeholder="Or type Hinglish here to auto-fill with CivicSnap AI..."
                 className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs text-slate-800 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
               />
               <button
                 type="button"
                 disabled={convertingVoice || voiceTranscript.trim().length < 3}
-                onClick={() => void convertVoiceWithGemini(voiceTranscript)}
+                onClick={() => void convertVoiceWithAi(voiceTranscript)}
                 className="inline-flex min-h-[38px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100 disabled:opacity-50"
               >
                 <Sparkles size={13} className="text-blue-600" aria-hidden="true" />
@@ -1574,7 +1784,7 @@ export function ReportComposerClient() {
                   disabled={convertingVoice}
                   onClick={() => {
                     setVoiceTranscript(sample.text);
-                    void convertVoiceWithGemini(sample.text);
+                    void convertVoiceWithAi(sample.text);
                   }}
                   className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                 >
@@ -1601,11 +1811,11 @@ export function ReportComposerClient() {
             )}
           </section>
 
-          {/* 4. Issue Details + Live AI Material Estimator Chip */}
+          {/* 4. Issue Details + Authentic CivicSnap AI Material Audit Chip */}
           <section className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-[var(--font-heading)] text-base font-bold text-slate-900">
-                4. Report Details &amp; AI Material Audit
+                4. Report Details &amp; CivicSnap AI Audit
               </h2>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
                 <Coins size={12} aria-hidden="true" />
@@ -1613,18 +1823,54 @@ export function ReportComposerClient() {
               </span>
             </div>
 
-            {/* Live AI Material Estimator Chip */}
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200/80 bg-slate-50 p-3.5">
+            {/* Authentic CivicSnap AI Estimator Chip — NEVER invents scores or materials before real verification */}
+            <div
+              className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3.5 ${
+                photoAuditStatus === "rejected"
+                  ? "border-rose-300 bg-rose-50/70"
+                  : photoAuditStatus === "verified"
+                    ? "border-emerald-200 bg-emerald-50/40"
+                    : "border-blue-200/80 bg-slate-50"
+              }`}
+            >
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600/10 text-blue-700">
-                  <Gauge size={18} aria-hidden="true" />
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                    photoAuditStatus === "rejected"
+                      ? "bg-rose-100 text-rose-700"
+                      : photoAuditStatus === "verified"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-blue-600/10 text-blue-700"
+                  }`}
+                >
+                  {photoAuditStatus === "checking" ? (
+                    <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+                  ) : photoAuditStatus === "rejected" ? (
+                    <AlertCircle size={18} aria-hidden="true" />
+                  ) : (
+                    <Gauge size={18} aria-hidden="true" />
+                  )}
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">
-                    AI Material Estimator
+                  <p
+                    className={`text-[11px] font-semibold uppercase tracking-wide ${
+                      photoAuditStatus === "rejected"
+                        ? "text-rose-700"
+                        : photoAuditStatus === "verified"
+                          ? "text-emerald-700"
+                          : "text-blue-600"
+                    }`}
+                  >
+                    CivicSnap AI Material &amp; Authenticity Audit
                   </p>
                   <p className="text-sm font-bold text-slate-900">
-                    Urgency Score: {urgencyScore}/100
+                    {photoAuditStatus === "checking"
+                      ? "Inspecting photo authenticity..."
+                      : photoAuditStatus === "rejected"
+                        ? "Invalid Civic Photo · Score 0/100"
+                        : urgencyScore !== null
+                          ? `Verified Urgency Score: ${urgencyScore}/100`
+                          : "Awaiting genuine photo verification"}
                   </p>
                 </div>
               </div>
@@ -1632,9 +1878,12 @@ export function ReportComposerClient() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
                   <Wrench size={12} className="text-blue-600" aria-hidden="true" />
-                  {estimatedMaterialShort}
+                  {photoAuditStatus === "rejected"
+                    ? "No repair material — invalid image"
+                    : estimatedMaterialShort ??
+                      "Calculated after CivicSnap AI verifies photo"}
                 </span>
-                {priorityZoneCheck.isHighPriority && (
+                {photoAuditStatus === "verified" && priorityZoneCheck.isHighPriority && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
                     <Siren size={12} aria-hidden="true" />
                     High Priority Zone
@@ -1805,9 +2054,9 @@ export function ReportComposerClient() {
 
               <button
                 type="button"
-                disabled={submitting}
+                disabled={submitting || photoAuditStatus === "rejected"}
                 onClick={() => void handleSubmit()}
-                className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 disabled:opacity-70"
+                className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? (
                   <Loader2 size={17} className="animate-spin" aria-hidden="true" />
@@ -1815,9 +2064,13 @@ export function ReportComposerClient() {
                   <Sparkles size={17} aria-hidden="true" />
                 )}
                 <span>
-                  {submitting
-                    ? "Submitting Civic Report..."
-                    : "Submit Issue & Earn +50 CivicPoints"}
+                  {validatingReport
+                    ? "Verifying Authenticity with CivicSnap AI..."
+                    : submitting
+                      ? "Submitting Verified Civic Report..."
+                      : photoAuditStatus === "rejected"
+                        ? "Replace Rejected Photo to Submit"
+                        : "Submit Verified Issue & Earn +50 CivicPoints"}
                 </span>
               </button>
             </div>

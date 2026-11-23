@@ -96,7 +96,7 @@ function mapFirestoreReportToFeedIssue(report: PublicIssueRecord): BengaluruFeed
     aiVerificationSummary:
       report.verificationReason ||
       (report.status === "resolved"
-        ? "Gemini Vision compared the original issue photo against the repair proof and verified surface restoration at the same location."
+        ? "CivicSnap Vision AI compared the original issue photo against the repair proof and verified surface restoration at the same location."
         : undefined),
     lat,
     lng,
@@ -707,7 +707,7 @@ export function BengaluruFeedClient() {
                           aria-hidden="true"
                         />
                         <span className="text-sm font-bold text-slate-900">
-                          {matchScore}% Visual Match — Gemini Vision Verified
+                          {matchScore}% Visual Match — CivicSnap Vision AI Verified
                         </span>
                       </div>
                       <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700">
@@ -733,7 +733,7 @@ export function BengaluruFeedClient() {
 
                     <p className="mt-2.5 text-xs leading-5 text-slate-700 sm:text-sm">
                       {proofModalIssue.aiVerificationSummary ||
-                        "Gemini Vision confirmed the same road corridor and verified that the reported civic hazard has been fully repaired."}
+                        "CivicSnap Vision AI confirmed the same road corridor and verified that the reported civic hazard has been fully repaired."}
                     </p>
 
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-emerald-200/60 pt-3.5 text-xs">

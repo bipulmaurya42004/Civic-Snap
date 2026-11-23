@@ -6,7 +6,7 @@ import { LoadingState } from "@/components/ui/StateViews";
 export const metadata: Metadata = {
   title: "City Dashboard & AI Verification",
   description:
-    "Municipal review console and Judge Demo Mode for side-by-side Before vs After contractor repair verification powered by Gemini Vision.",
+    "Municipal review console for side-by-side Before vs After contractor repair verification powered by CivicSnap Vision AI.",
 };
 
 export default function AdminPage() {
@@ -21,7 +21,7 @@ export default function AdminPage() {
         </h1>
         <p className="mt-2.5 text-sm leading-6 text-slate-600 sm:text-base">
           Compare citizen Before photos against contractor After repair proof
-          with Gemini Vision match scores, audit estimated materials, and
+          with CivicSnap Vision AI match scores, audit estimated materials, and
           approve verified fixes.
         </p>
       </div>

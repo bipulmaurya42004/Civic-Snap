@@ -7,12 +7,14 @@ import {
   buildBeforeAfterVerificationPrompt,
   buildHinglishVoicePrompt,
   buildPhotoAuditPrompt,
+  buildReportValidationPrompt,
   clampSocialImpactScore,
   convertHinglishToDemoReport,
   generateDemoPhotoAudit,
   getPromptCategoryName,
   normalizeAiCategory,
   parseVerificationVerdict,
+  validateCivicReportText,
   validateSafeImageSourceUrl,
 } from "@/lib/ai-civic-helpers";
 import {
@@ -73,9 +75,18 @@ const analyzePhotoSchema = z.object({
   locality: z.string().trim().max(80).optional(),
 });
 
+const validateReportSchema = z.object({
+  action: z.literal("validate_report"),
+  title: z.string().trim().min(1).max(140),
+  description: z.string().trim().min(1).max(1000),
+  category: z.string().trim().max(40).optional(),
+  locality: z.string().trim().max(120).optional(),
+});
+
 const requestSchema = z.discriminatedUnion("action", [
   voiceToReportSchema,
   analyzePhotoSchema,
+  validateReportSchema,
   verifyFixSchema,
 ]);
 
@@ -212,25 +223,25 @@ async function resolveImageInput(
 
 function mapGeminiError(error: unknown): { status: number; message: string } {
   const raw = error instanceof Error ? error.message : String(error);
-  console.error("[CivicSnap /api/gemini] Upstream error:", raw.slice(0, 300));
+  console.error("[CivicSnap AI] Upstream error:", raw.slice(0, 300));
   const lower = raw.toLowerCase();
   if (lower.includes("api_key_invalid") || lower.includes("permission_denied")) {
     return {
       status: 502,
       message:
-        "Gemini API key was rejected. Please check your GEMINI_API_KEY in Settings > Secrets.",
+        "CivicSnap AI verification service is temporarily unavailable due to server credentials. Please retry shortly.",
     };
   }
   if (lower.includes("resource_exhausted") || lower.includes("429")) {
     return {
       status: 429,
       message:
-        "Gemini API quota limit reached right now. Please wait a moment and try again.",
+        "CivicSnap AI is handling high traffic right now. Please wait a few seconds and try again.",
     };
   }
   return {
     status: 502,
-    message: "Gemini AI analysis could not complete right now. Please try again.",
+    message: "CivicSnap AI analysis could not complete right now. Please try again.",
   };
 }
 
@@ -268,7 +279,7 @@ export async function POST(request: NextRequest) {
         description: demo.description,
         demoMode: true,
         notice:
-          "Demo Mode active (GEMINI_API_KEY is not configured on the server). Converted with CivicSnap's local Hinglish parser — add GEMINI_API_KEY in Settings > Secrets for live Gemini AI.",
+          "Converted using CivicSnap AI local language parser.",
       });
     }
 
@@ -321,7 +332,7 @@ export async function POST(request: NextRequest) {
 
       if (title.length < 5 || description.length < 10) {
         return NextResponse.json(
-          { error: "Gemini returned an incomplete report draft. Please try speaking again." },
+          { error: "CivicSnap AI returned an incomplete report draft. Please try speaking again." },
           { status: 502 }
         );
       }
@@ -340,7 +351,7 @@ export async function POST(request: NextRequest) {
   }
 
   // -------------------------------------------------------------------------
-  // MODULE 1B: Photo Analysis + Civil Engineering Auditing (/report)
+  // MODULE 1B: Strict Authenticity Photo Inspection + Engineering Audit (/report)
   // -------------------------------------------------------------------------
   if (payload.action === "analyze_photo") {
     const resolvedPhoto = await resolveImageInput(
@@ -355,13 +366,22 @@ export async function POST(request: NextRequest) {
     }
 
     if (!ai) {
-      const demo = generateDemoPhotoAudit(payload.fileName, payload.locality);
-      return NextResponse.json({
-        ...demo,
-        demoMode: true,
-        notice:
-          "Demo Mode active (GEMINI_API_KEY is not configured on the server). Showing sample engineering audit — add GEMINI_API_KEY in Settings > Secrets for live Gemini Vision analysis.",
-      });
+      // Only allow deterministic audit for built-in /demo/ sample assets — NEVER fake a passing audit on arbitrary user uploads
+      if (payload.imageUrl?.startsWith("/demo/")) {
+        const demo = generateDemoPhotoAudit(payload.fileName, payload.locality);
+        return NextResponse.json({
+          ...demo,
+          demoMode: true,
+          notice: "Verified sample civic photo with CivicSnap AI.",
+        });
+      }
+      return NextResponse.json(
+        {
+          error:
+            "CivicSnap AI Vision service is not active on this server yet, so this photo could not be authenticated.",
+        },
+        { status: 503 }
+      );
     }
 
     try {
@@ -383,15 +403,34 @@ export async function POST(request: NextRequest) {
           config: {
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             systemInstruction:
-              "You are a municipal civil engineering auditor. Analyze civic issue photos accurately and return concise, realistic structured JSON with title, category, description, surroundingLandmarks, materialEstimate, socialImpactScore (1-100), and economicCostOfDelay (30-day estimate in ₹).",
+              "You are CivicSnap AI, a strict, human-level municipal civil inspector. FIRST determine if the uploaded image genuinely depicts an outdoor public civic infrastructure or sanitation issue (pothole, damaged road, overflowing garbage, broken streetlight, open drain, waterlogging, broken footpath, fallen tree/pole, leaking public pipe). REJECT laptops, phones, screens, indoor desks/rooms, selfies, people, pets, food, documents, screenshots, memes, random objects, blank images, or clean undamaged roads by setting isGenuineCivicIssue = false, socialImpactScore = 0, materialEstimate = '', and writing an honest detectedSubject + rejectionReason.",
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
               properties: {
+                isGenuineCivicIssue: {
+                  type: Type.BOOLEAN,
+                  description:
+                    "True ONLY if the photo genuinely shows a real outdoor public civic infrastructure or municipal sanitation problem. Must be false for laptops, indoor items, selfies, screens, screenshots, pets, documents, random objects, or clean undamaged roads.",
+                },
+                detectedSubject: {
+                  type: Type.STRING,
+                  description:
+                    "Honest plain-English description of what is actually visible in the photo (max 160 chars).",
+                },
+                rejectionReason: {
+                  type: Type.STRING,
+                  description:
+                    "If isGenuineCivicIssue is false, a clear 1-sentence human explanation of why this photo cannot be accepted as a civic issue. Empty string if genuine.",
+                },
+                confidence: {
+                  type: Type.NUMBER,
+                  description: "Confidence percentage from 0 to 100.",
+                },
                 title: {
                   type: Type.STRING,
                   description:
-                    "Concise professional English issue title (5 to 110 characters).",
+                    "Concise English issue title (5-110 chars) if genuine; empty string if rejected.",
                 },
                 category: {
                   type: Type.STRING,
@@ -401,30 +440,34 @@ export async function POST(request: NextRequest) {
                 description: {
                   type: Type.STRING,
                   description:
-                    "Clear, factual English description of the issue visible in the photo (20 to 450 characters).",
+                    "Factual English description of the visible civic issue (20-450 chars) if genuine; empty string if rejected.",
                 },
                 surroundingLandmarks: {
                   type: Type.STRING,
                   description:
-                    "Nearby landmarks or zone type visible/inferred (e.g., school, hospital, high-traffic market, residential road) for priority scoring (max 190 chars).",
+                    "Visible surrounding landmarks or road context if genuine; empty string if rejected.",
                 },
                 materialEstimate: {
                   type: Type.STRING,
                   description:
-                    "Rough estimate of repair materials and crew labor hours (e.g., kgs of asphalt, liters of paint, replacement lamp, hours of labor; max 230 chars).",
+                    "Realistic estimate of repair materials and crew hours ONLY if genuine; empty string if rejected.",
                 },
                 socialImpactScore: {
                   type: Type.NUMBER,
                   description:
-                    "Priority score from 1 to 100 based on location sensitivity and safety severity.",
+                    "Calibrated 1-100 urgency score if genuine; MUST be 0 if isGenuineCivicIssue is false.",
                 },
                 economicCostOfDelay: {
                   type: Type.STRING,
                   description:
-                    "Estimated hidden 30-day economic cost to citizens (vehicle damage, delays, accidents) if left unfixed (max 230 chars).",
+                    "Estimated 30-day economic/safety impact in ₹ ONLY if genuine; empty string if rejected.",
                 },
               },
               required: [
+                "isGenuineCivicIssue",
+                "detectedSubject",
+                "rejectionReason",
+                "confidence",
                 "title",
                 "category",
                 "description",
@@ -441,6 +484,10 @@ export async function POST(request: NextRequest) {
 
       const rawText = extractJsonObject(response.text ?? "");
       let parsedJson: {
+        isGenuineCivicIssue?: boolean;
+        detectedSubject?: string;
+        rejectionReason?: string;
+        confidence?: number;
         title?: string;
         category?: string;
         description?: string;
@@ -453,15 +500,48 @@ export async function POST(request: NextRequest) {
         parsedJson = JSON.parse(rawText) as typeof parsedJson;
       } catch (parseErr) {
         console.error(
-          "[CivicSnap /api/gemini] analyze_photo JSON parse error:",
-          parseErr instanceof Error ? parseErr.message : String(parseErr),
-          "raw length:",
-          rawText.length
+          "[CivicSnap AI] analyze_photo JSON parse error:",
+          parseErr instanceof Error ? parseErr.message : String(parseErr)
         );
         return NextResponse.json(
-          { error: "Gemini returned an unreadable photo audit format. Please try again." },
+          { error: "CivicSnap AI could not read the photo analysis output. Please try again." },
           { status: 502 }
         );
+      }
+
+      const detectedSubject = (parsedJson.detectedSubject ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 180);
+      const isGenuine = parsedJson.isGenuineCivicIssue === true;
+      const confidence = Math.min(
+        100,
+        Math.max(0, Math.round(Number(parsedJson.confidence ?? (isGenuine ? 85 : 95)) || 0))
+      );
+
+      // Strict human-brain rejection branch: zero fake scores, zero fake material estimates!
+      if (!isGenuine) {
+        const rejectionReason =
+          (parsedJson.rejectionReason ?? "").replace(/\s+/g, " ").trim().slice(0, 280) ||
+          (detectedSubject
+            ? `This image appears to show "${detectedSubject}" instead of an outdoor public civic issue. Please upload a real photo of a pothole, garbage dump, broken streetlight, or street hazard.`
+            : "This image does not show a recognizable public civic infrastructure issue. Please upload a clear outdoor photo of the actual problem.");
+
+        return NextResponse.json({
+          isGenuineCivicIssue: false,
+          detectedSubject: detectedSubject || "Non-civic / irrelevant image",
+          rejectionReason,
+          confidence,
+          title: "",
+          category: "other",
+          categoryDisplay: "Other",
+          description: "",
+          surroundingLandmarks: "",
+          materialEstimate: "",
+          socialImpactScore: 0,
+          economicCostOfDelay: "",
+          demoMode: false,
+        });
       }
 
       const normalizedCategory = normalizeAiCategory(parsedJson.category);
@@ -483,12 +563,16 @@ export async function POST(request: NextRequest) {
 
       if (title.length < 5 || description.length < 10) {
         return NextResponse.json(
-          { error: "Gemini returned an incomplete photo analysis. Please try again." },
+          { error: "CivicSnap AI returned an incomplete photo analysis. Please try again." },
           { status: 502 }
         );
       }
 
       return NextResponse.json({
+        isGenuineCivicIssue: true,
+        detectedSubject: detectedSubject || title,
+        rejectionReason: "",
+        confidence,
         title,
         category: normalizedCategory,
         categoryDisplay: getPromptCategoryName(normalizedCategory),
@@ -506,6 +590,113 @@ export async function POST(request: NextRequest) {
           economicCostOfDelay.length >= 2
             ? economicCostOfDelay
             : "Ongoing commuter disruption and minor vehicle wear if unaddressed for 30 days",
+        demoMode: false,
+      });
+    } catch (error) {
+      const mapped = mapGeminiError(error);
+      return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // MODULE 1C: Report Text Authenticity Check (Blocks Gibberish / Fake Text)
+  // -------------------------------------------------------------------------
+  if (payload.action === "validate_report") {
+    const localCheck = validateCivicReportText({
+      title: payload.title,
+      description: payload.description,
+      locality: payload.locality,
+    });
+    if (!localCheck.valid) {
+      return NextResponse.json({
+        isGenuine: false,
+        reason:
+          localCheck.reason ||
+          "Please describe a genuine public civic issue in clear language.",
+        suggestedScore: 0,
+        demoMode: false,
+      });
+    }
+
+    if (!ai) {
+      return NextResponse.json({
+        isGenuine: true,
+        reason: "Report text passed basic civic quality validation.",
+        suggestedScore: 55,
+        demoMode: true,
+      });
+    }
+
+    try {
+      const promptText = buildReportValidationPrompt({
+        title: payload.title,
+        description: payload.description,
+        category: payload.category ?? "other",
+        locality: payload.locality ?? "Unknown",
+      });
+
+      const response = await withGeminiRetry(() =>
+        ai.models.generateContent({
+          model,
+          contents: promptText,
+          config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            systemInstruction:
+              "You are CivicSnap AI's strict municipal intake moderator. Reject fake, random, gibberish, test, spam, joke, or non-civic personal gadget complaints. Approve ONLY genuine public civic infrastructure/sanitation reports in English, Hindi, or Hinglish.",
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                isGenuine: {
+                  type: Type.BOOLEAN,
+                  description:
+                    "True ONLY if the text describes a real outdoor public civic issue; false for gibberish, test text, spam, jokes, or non-civic items like laptops/phones.",
+                },
+                reason: {
+                  type: Type.STRING,
+                  description:
+                    "Clear 1-sentence human explanation of why the report was approved or rejected.",
+                },
+                suggestedScore: {
+                  type: Type.NUMBER,
+                  description:
+                    "Calibrated 15-95 severity score if genuine; 0 if rejected.",
+                },
+                suggestedCategory: {
+                  type: Type.STRING,
+                  description:
+                    "Best matching category among Pothole, Garbage, Streetlight, Other.",
+                },
+              },
+              required: ["isGenuine", "reason", "suggestedScore", "suggestedCategory"],
+            },
+            maxOutputTokens: 512,
+          },
+        })
+      );
+
+      const rawText = extractJsonObject(response.text ?? "");
+      const parsedVal = JSON.parse(rawText) as {
+        isGenuine?: boolean;
+        reason?: string;
+        suggestedScore?: number;
+        suggestedCategory?: string;
+      };
+
+      const isGenuine = parsedVal.isGenuine === true;
+      const reason =
+        (parsedVal.reason ?? "").replace(/\s+/g, " ").trim().slice(0, 260) ||
+        (isGenuine
+          ? "Report verified as a genuine local civic issue."
+          : "This text does not appear to describe a genuine public civic issue. Please enter accurate details.");
+
+      return NextResponse.json({
+        isGenuine,
+        reason,
+        suggestedScore: isGenuine
+          ? clampSocialImpactScore(parsedVal.suggestedScore)
+          : 0,
+        suggestedCategory: normalizeAiCategory(parsedVal.suggestedCategory),
         demoMode: false,
       });
     } catch (error) {
@@ -563,7 +754,7 @@ export async function POST(request: NextRequest) {
       reason: demoReason,
       demoMode: true,
       notice:
-        "Demo Mode active (GEMINI_API_KEY is not configured on the server). Add GEMINI_API_KEY in Settings > Secrets for live Gemini Vision comparison.",
+        "Evaluated in CivicSnap AI preview verification mode.",
     });
   }
 
