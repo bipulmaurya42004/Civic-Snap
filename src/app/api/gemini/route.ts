@@ -19,7 +19,8 @@ import {
 } from "@/lib/ai-civic-helpers";
 import {
   createGeminiServerClient,
-  getGeminiServerModel,
+  generateContentResilient,
+  sanitizeGeminiErrorMessage,
 } from "@/lib/gemini-server";
 
 export const runtime = "nodejs";
@@ -115,30 +116,7 @@ function extractJsonObject(rawText: string): string {
   return stripped;
 }
 
-async function withGeminiRetry<T>(operation: () => Promise<T>, maxRetries = 2): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-      const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
-      const isRetryable =
-        msg.includes("503") ||
-        msg.includes("500") ||
-        msg.includes("unavailable") ||
-        msg.includes("overloaded") ||
-        msg.includes("econnreset") ||
-        msg.includes("fetch failed") ||
-        msg.includes("timeout");
-      if (!isRetryable || attempt === maxRetries) {
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
-    }
-  }
-  throw lastError;
-}
+
 
 async function resolveImageInput(
   inlineImg: z.infer<typeof inlineImageSchema> | undefined,
@@ -222,26 +200,24 @@ async function resolveImageInput(
 }
 
 function mapGeminiError(error: unknown): { status: number; message: string } {
-  const raw = error instanceof Error ? error.message : String(error);
-  console.error("[CivicSnap AI] Upstream error:", raw.slice(0, 300));
-  const lower = raw.toLowerCase();
+  const safe = sanitizeGeminiErrorMessage(error);
+  console.error("[CivicSnap AI] Upstream error:", safe);
+  const lower = safe.toLowerCase();
   if (lower.includes("api_key_invalid") || lower.includes("permission_denied")) {
     return {
       status: 502,
-      message:
-        "CivicSnap AI verification service is temporarily unavailable due to server credentials. Please retry shortly.",
+      message: `Gemini API authentication failed (${safe}). Please check GEMINI_API_KEY in Settings > Secrets.`,
     };
   }
   if (lower.includes("resource_exhausted") || lower.includes("429")) {
     return {
       status: 429,
-      message:
-        "CivicSnap AI is handling high traffic right now. Please wait a few seconds and try again.",
+      message: `Gemini API rate limit reached (${safe}). Please wait a few seconds and try again.`,
     };
   }
   return {
     status: 502,
-    message: "CivicSnap AI analysis could not complete right now. Please try again.",
+    message: safe || "Gemini AI request failed. Please try again.",
   };
 }
 
@@ -264,7 +240,6 @@ export async function POST(request: NextRequest) {
 
   const payload = parsed.data;
   const ai = createGeminiServerClient();
-  const model = getGeminiServerModel();
 
   // -------------------------------------------------------------------------
   // MODULE 1: Hinglish Voice-to-Report
@@ -285,12 +260,15 @@ export async function POST(request: NextRequest) {
 
     try {
       const prompt = buildHinglishVoicePrompt(payload.transcript);
-      const response = await withGeminiRetry(() =>
-        ai.models.generateContent({
+      const response = await generateContentResilient(
+        ai,
+        (model, useThinkingConfig) => ({
           model,
           contents: prompt,
           config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            ...(useThinkingConfig
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
             systemInstruction:
               "You convert spoken Hindi/Hinglish civic complaints into concise, professional English civic issue reports. Always choose the best matching Category among Pothole, Garbage, Streetlight, or Other.",
             responseMimeType: "application/json",
@@ -386,8 +364,9 @@ export async function POST(request: NextRequest) {
 
     try {
       const promptText = buildPhotoAuditPrompt(payload.locality);
-      const response = await withGeminiRetry(() =>
-        ai.models.generateContent({
+      const response = await generateContentResilient(
+        ai,
+        (model, useThinkingConfig) => ({
           model,
           contents: {
             parts: [
@@ -401,7 +380,9 @@ export async function POST(request: NextRequest) {
             ],
           },
           config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            ...(useThinkingConfig
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
             systemInstruction:
               "You are CivicSnap AI, a strict, human-level municipal civil inspector. FIRST determine if the uploaded image genuinely depicts an outdoor public civic infrastructure or sanitation issue (pothole, damaged road, overflowing garbage, broken streetlight, open drain, waterlogging, broken footpath, fallen tree/pole, leaking public pipe). REJECT laptops, phones, screens, indoor desks/rooms, selfies, people, pets, food, documents, screenshots, memes, random objects, blank images, or clean undamaged roads by setting isGenuineCivicIssue = false, socialImpactScore = 0, materialEstimate = '', and writing an honest detectedSubject + rejectionReason.",
             responseMimeType: "application/json",
@@ -477,7 +458,6 @@ export async function POST(request: NextRequest) {
                 "economicCostOfDelay",
               ],
             },
-            maxOutputTokens: 1024,
           },
         })
       );
@@ -635,12 +615,15 @@ export async function POST(request: NextRequest) {
         locality: payload.locality ?? "Unknown",
       });
 
-      const response = await withGeminiRetry(() =>
-        ai.models.generateContent({
+      const response = await generateContentResilient(
+        ai,
+        (model, useThinkingConfig) => ({
           model,
           contents: promptText,
           config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            ...(useThinkingConfig
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
             systemInstruction:
               "You are CivicSnap AI's strict municipal intake moderator. Reject fake, random, gibberish, test, spam, joke, or non-civic personal gadget complaints. Approve ONLY genuine public civic infrastructure/sanitation reports in English, Hindi, or Hinglish.",
             responseMimeType: "application/json",
@@ -670,7 +653,6 @@ export async function POST(request: NextRequest) {
               },
               required: ["isGenuine", "reason", "suggestedScore", "suggestedCategory"],
             },
-            maxOutputTokens: 512,
           },
         })
       );
@@ -787,12 +769,15 @@ export async function POST(request: NextRequest) {
     });
     parts.push({ text: promptText });
 
-    const response = await withGeminiRetry(() =>
-      ai.models.generateContent({
+    const response = await generateContentResilient(
+      ai,
+      (model, useThinkingConfig) => ({
         model,
         contents: { parts },
         config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          ...(useThinkingConfig
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : {}),
           systemInstruction:
             'You are an impartial civic repair verification inspector. Compare the original issue image and the repair proof image carefully. Reply strictly as JSON with verdict ("Verified" or "Flagged"), aiConfidenceScore (integer 0-100), and a single clear 1-sentence reason.',
           responseMimeType: "application/json",

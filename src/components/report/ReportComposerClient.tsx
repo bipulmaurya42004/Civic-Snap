@@ -35,11 +35,13 @@ import {
   ISSUE_CATEGORIES,
   type EngineeringInsights,
   type IssueCategory,
-  type PhotoAuditResponse,
   type ReportAuthenticityResponse,
   type VoiceToReportResponse,
 } from "@/types/civic";
-import { validateCivicReportText } from "@/lib/ai-civic-helpers";
+import {
+  normalizeAiCategory,
+  validateCivicReportText,
+} from "@/lib/ai-civic-helpers";
 import {
   getCategoryLabel,
   parseFirestoreSubmitError,
@@ -152,7 +154,6 @@ export function ReportComposerClient() {
   // Photo & Live Web Camera state (Live Camera Only; EXIF read privately & stripped before storage)
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
-  const [isSamplePhoto, setIsSamplePhoto] = useState(false);
   const [compressedKb, setCompressedKb] = useState<number | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -220,6 +221,8 @@ export function ReportComposerClient() {
   );
   const [engineeringInsights, setEngineeringInsights] =
     useState<EngineeringInsights | null>(null);
+  const [asphaltEstimateKg, setAsphaltEstimateKg] = useState<number | null>(null);
+  const [estimatedCostInr, setEstimatedCostInr] = useState<number | null>(null);
   const [auditNotice, setAuditNotice] = useState<string | null>(null);
 
   // Submission state
@@ -326,10 +329,9 @@ export function ReportComposerClient() {
       : null;
 
   const runPhotoAuditInternal = async (
-    targetFile: File | null,
-    useSample: boolean
+    targetFile: File | null
   ): Promise<{ accepted: boolean; reason?: string }> => {
-    if (!targetFile && !useSample) {
+    if (!targetFile) {
       return { accepted: true };
     }
 
@@ -338,70 +340,136 @@ export function ReportComposerClient() {
     setPhotoError(null);
     setPhotoRejectionReason(null);
     setDetectedPhotoSubject(null);
+    setAsphaltEstimateKg(null);
+    setEstimatedCostInr(null);
     setAuditNotice(null);
 
     try {
-      let compactPayload: { base64: string; mimeType: string } | undefined;
-      if (targetFile) {
-        compactPayload = await fileToCompactBase64(targetFile, 1024);
-      }
+      const compactPayload = await fileToCompactBase64(targetFile, 1024);
 
-      const res = await fetch("/api/gemini", {
+      const res = await fetch("/api/analyze-issue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "analyze_photo",
-          image: compactPayload,
-          imageUrl: !targetFile && useSample ? "/demo/pothole.jpg" : undefined,
-          fileName: targetFile?.name ?? "pothole.jpg",
+          imageBase64: compactPayload.base64,
+          mimeType: compactPayload.mimeType,
           locality: effectiveLocality,
         }),
       });
 
-      const data = (await res.json()) as PhotoAuditResponse & { error?: string };
-      if (!res.ok) {
+      let data: {
+        success?: boolean;
+        error?: string;
+        audit?: {
+          is_civic_issue?: boolean;
+          detected_subject?: string;
+          rejection_reason?: string;
+          category?: string;
+          normalized_category?: IssueCategory;
+          severity?: string;
+          asphalt_estimate_kg?: number;
+          estimated_cost_inr?: number;
+          title?: string;
+          summary?: string;
+          surrounding_landmarks?: string;
+          material_estimate?: string;
+          social_impact_score?: number;
+          economic_cost_of_delay?: string;
+        };
+      };
+
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        const parseMsg = `Unexpected response from /api/analyze-issue (HTTP ${res.status}).`;
+        setPhotoAuditStatus("error");
+        setEngineeringInsights(null);
+        setPhotoError(parseMsg);
+        return { accepted: false, reason: parseMsg };
+      }
+
+      if (!res.ok || data.success === false || !data.audit) {
         setPhotoAuditStatus("error");
         setEngineeringInsights(null);
         const errMsg =
-          data.error || "Could not verify photo with CivicSnap AI right now.";
+          data.error || `Photo analysis failed (HTTP ${res.status}). Please try again.`;
         setPhotoError(errMsg);
         return { accepted: false, reason: errMsg };
       }
 
-      setDetectedPhotoSubject(data.detectedSubject || null);
+      const audit = data.audit;
+      setDetectedPhotoSubject(audit.detected_subject || null);
 
-      // Strict human-brain rejection: laptop, selfie, indoor object, meme, clean road, etc.
-      if (!data.isGenuineCivicIssue) {
+      // Strict non-civic rejection: computer screen, code editor, indoor photo, selfie, etc.
+      if (audit.is_civic_issue === false) {
         const reason =
-          data.rejectionReason ||
-          `Detected "${data.detectedSubject || "non-civic image"}". Please upload a real outdoor civic issue photo.`;
+          audit.rejection_reason ||
+          `Detected "${audit.detected_subject || "non-civic image"}". Please capture a real outdoor civic issue photo.`;
         setPhotoAuditStatus("rejected");
         setPhotoRejectionReason(reason);
+        setPhotoError(null);
         setEngineeringInsights(null);
         setAuditNotice(null);
         return { accepted: false, reason };
       }
 
+      const mappedCategory =
+        audit.normalized_category ?? normalizeAiCategory(audit.category);
+      const asphaltKg =
+        typeof audit.asphalt_estimate_kg === "number" && audit.asphalt_estimate_kg > 0
+          ? Math.round(audit.asphalt_estimate_kg)
+          : null;
+      const costInr =
+        typeof audit.estimated_cost_inr === "number" && audit.estimated_cost_inr > 0
+          ? Math.round(audit.estimated_cost_inr)
+          : null;
+      const materialText =
+        audit.material_estimate ||
+        [
+          asphaltKg ? `~${asphaltKg} kg Asphalt` : null,
+          costInr ? `Est. ₹${costInr.toLocaleString("en-IN")}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") ||
+        "Field repair estimate ready";
+
       setPhotoAuditStatus("verified");
-      setCategory(data.category);
-      if (!title.trim() || useSample) setTitle(data.title);
-      if (!description.trim() || useSample) setDescription(data.description);
+      setCategory(mappedCategory);
+      if (audit.title && !title.trim()) setTitle(audit.title);
+      if (audit.summary && !description.trim()) setDescription(audit.summary);
+      setAsphaltEstimateKg(asphaltKg);
+      setEstimatedCostInr(costInr);
       setEngineeringInsights({
-        surroundingLandmarks: data.surroundingLandmarks,
-        materialEstimate: data.materialEstimate,
-        socialImpactScore: data.socialImpactScore,
-        economicCostOfDelay: data.economicCostOfDelay,
+        surroundingLandmarks:
+          audit.surrounding_landmarks || `${effectiveLocality} street corridor`,
+        materialEstimate: materialText,
+        socialImpactScore:
+          typeof audit.social_impact_score === "number"
+            ? audit.social_impact_score
+            : audit.severity === "Critical"
+              ? 90
+              : audit.severity === "High"
+                ? 78
+                : 62,
+        economicCostOfDelay:
+          audit.economic_cost_of_delay ||
+          (costInr
+            ? `₹${(costInr * 4).toLocaleString("en-IN")}+ est. 30-day delay impact`
+            : "Ongoing commuter disruption if unaddressed"),
       });
       setAuditNotice(
-        data.notice ||
-          `CivicSnap AI verified genuine civic issue (${data.detectedSubject || data.categoryDisplay}) and estimated repair needs.`
+        `CivicSnap AI verified genuine ${audit.category || getCategoryLabel(mappedCategory)} issue${
+          asphaltKg ? ` (~${asphaltKg} kg asphalt` : ""
+        }${costInr ? `${asphaltKg ? ", " : " ("}est. ₹${costInr.toLocaleString("en-IN")})` : asphaltKg ? ")" : ""}.`
       );
       return { accepted: true };
-    } catch {
+    } catch (err) {
       setPhotoAuditStatus("error");
       setEngineeringInsights(null);
       const errMsg =
-        "Network error while contacting CivicSnap AI Vision. Tap 'Re-Verify Photo' to retry.";
+        err instanceof Error && err.message
+          ? `Could not complete AI photo audit: ${err.message}`
+          : "Network error while contacting /api/analyze-issue. Tap 'CivicSnap AI Verify' to retry.";
       setPhotoError(errMsg);
       return { accepted: false, reason: errMsg };
     } finally {
@@ -428,8 +496,9 @@ export function ReportComposerClient() {
     setPhotoRejectionReason(null);
     setDetectedPhotoSubject(null);
     setEngineeringInsights(null);
+    setAsphaltEstimateKg(null);
+    setEstimatedCostInr(null);
     setAuditNotice(null);
-    setIsSamplePhoto(false);
     setDuplicateImageDetected(false);
     setNeedsReviewFlag(false);
     setInternalFlagReasons([]);
@@ -490,7 +559,7 @@ export function ReportComposerClient() {
     setPhotoFile(cleanFileToStore);
 
     // 4. Automatically inspect captured photo with CivicSnap AI
-    void runPhotoAuditInternal(cleanFileToStore, false);
+    void runPhotoAuditInternal(cleanFileToStore);
   };
 
   const stopCameraStream = () => {
@@ -604,52 +673,6 @@ export function ReportComposerClient() {
     void processSelectedFile(file);
   };
 
-  const handleLoadSamplePhoto = () => {
-    if (photoPreviewUrl && photoPreviewUrl.startsWith("blob:")) {
-      URL.revokeObjectURL(photoPreviewUrl);
-    }
-    setPhotoError(null);
-    setPhotoRejectionReason(null);
-    setDuplicateImageDetected(false);
-    setNeedsReviewFlag(false);
-    setInternalFlagReasons([]);
-    internalExifRef.current = {
-      exifLat: null,
-      exifLng: null,
-      exifTimestampMs: null,
-    };
-    setDetectedPhotoSubject("Waterlogged road pothole along 100ft Road");
-    setPhotoAuditStatus("verified");
-    setPhotoFile(null);
-    setIsSamplePhoto(true);
-    setPhotoPreviewUrl("/demo/pothole.jpg");
-    setCompressedKb(74);
-    setExifStrippedReady(true);
-    setImageHash("3c3c7e7e7e3c1800");
-    setCategory("pothole");
-    if (!title.trim()) {
-      setTitle(
-        "Severe 2ft Road Pothole near Chinmaya Mission Hospital, Indiranagar"
-      );
-    }
-    if (!description.trim()) {
-      setDescription(
-        "Deep waterlogged asphalt crater on the left lane of 100ft Road creating severe hazard for ambulances and two-wheelers approaching CMH Hospital."
-      );
-    }
-    setEngineeringInsights({
-      surroundingLandmarks:
-        "High-traffic arterial corridor ~80m from Chinmaya Mission Hospital (Indiranagar)",
-      materialEstimate: "~140 kg Hot-Mix Asphalt · 2L Tack Coat · 3 labor hrs",
-      socialImpactScore: 92,
-      economicCostOfDelay:
-        "₹42,000+ est. 30-day two-wheeler suspension & emergency delay impact",
-    });
-    setAuditNotice(
-      "Sample verified road pothole loaded & optimized to 74 KB (EXIF stripped) with CivicSnap AI Engineering Insights."
-    );
-  };
-
   const handleRemovePhoto = () => {
     stopCameraStream();
     if (photoPreviewUrl && photoPreviewUrl.startsWith("blob:")) {
@@ -657,12 +680,13 @@ export function ReportComposerClient() {
     }
     setPhotoFile(null);
     setPhotoPreviewUrl(null);
-    setIsSamplePhoto(false);
     setCompressedKb(null);
     setPhotoAuditStatus("idle");
     setDetectedPhotoSubject(null);
     setPhotoRejectionReason(null);
     setEngineeringInsights(null);
+    setAsphaltEstimateKg(null);
+    setEstimatedCostInr(null);
     setPhotoError(null);
     setCameraError(null);
     setAuditNotice(null);
@@ -679,11 +703,11 @@ export function ReportComposerClient() {
   };
 
   const handleRunPhotoAudit = async () => {
-    if (!photoFile && !isSamplePhoto) {
-      setPhotoError("Upload a photo or load the sample photo first.");
+    if (!photoFile) {
+      setPhotoError("Please capture a live photo with your camera first.");
       return;
     }
-    await runPhotoAuditInternal(photoFile, isSamplePhoto);
+    await runPhotoAuditInternal(photoFile);
   };
 
   const reverseGeocodeCoordinates = async (lat: number, lng: number) => {
@@ -1071,11 +1095,11 @@ export function ReportComposerClient() {
     try {
       // 3. If a photo is attached and hasn't been verified yet (e.g., transient error), verify it first
       if (photoFile && photoAuditStatus !== "verified") {
-        const photoCheck = await runPhotoAuditInternal(photoFile, false);
+        const photoCheck = await runPhotoAuditInternal(photoFile);
         if (!photoCheck.accepted) {
           setFormError(
             photoCheck.reason ||
-              "CivicSnap AI could not verify your uploaded photo as a genuine civic issue."
+              "CivicSnap AI could not verify your captured photo as a genuine civic issue."
           );
           return;
         }
@@ -1148,8 +1172,8 @@ export function ReportComposerClient() {
           category,
           description,
           locality: effectiveLocality,
-          hasPhoto: Boolean(photoFile || isSamplePhoto),
-          photoFileName: photoFile?.name ?? (isSamplePhoto ? "pothole.jpg" : null),
+          hasPhoto: Boolean(photoFile),
+          photoFileName: photoFile?.name ?? null,
           beforeImageURL,
           surroundingLandmarks: engineeringInsights?.surroundingLandmarks ?? null,
           materialEstimate: finalMaterialEstimate,
@@ -1571,15 +1595,6 @@ export function ReportComposerClient() {
                     <span>Capture with Rear Camera</span>
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleLoadSamplePhoto}
-                  className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
-                >
-                  <Sparkles size={13} className="text-blue-600" aria-hidden="true" />
-                  <span>Load Sample Indiranagar Pothole Photo</span>
-                </button>
               </div>
             )}
 
@@ -2028,6 +2043,16 @@ export function ReportComposerClient() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {photoAuditStatus === "verified" && asphaltEstimateKg !== null && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                    ~{asphaltEstimateKg} kg Asphalt
+                  </span>
+                )}
+                {photoAuditStatus === "verified" && estimatedCostInr !== null && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    Est. ₹{estimatedCostInr.toLocaleString("en-IN")}
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
                   <Wrench size={12} className="text-blue-600" aria-hidden="true" />
                   {photoAuditStatus === "rejected"
