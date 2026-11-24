@@ -20,11 +20,17 @@ export const BOOTSTRAP_ADMIN_EMAIL = "bipulmaurya42004@gmail.com";
 export interface StoredUserProfile {
   uid: string;
   alias: string;
+  displayName: string;
   email: string;
+  photoURL: string;
+  role: "citizen" | "admin";
   leaderboardOptIn: boolean;
   civicPoints: number;
+  points: number;
   acceptedReportsCount: number;
+  reportsCount: number;
   resolvedReportsCount: number;
+  resolvedCount: number;
   createdAtIso: string | null;
   updatedAtIso: string | null;
 }
@@ -77,14 +83,34 @@ export async function fetchUserProfile(
     const snap = await getDoc(doc(db, "users", uid));
     if (!snap.exists()) return null;
     const data = snap.data();
+    const alias = String(data.alias ?? data.displayName ?? "CivicResident");
+    const points = toSafeNonNegativeInt(
+      typeof data.civicPoints === "number" ? data.civicPoints : data.points
+    );
+    const reportsCount = toSafeNonNegativeInt(
+      typeof data.reportsCount === "number"
+        ? data.reportsCount
+        : data.acceptedReportsCount
+    );
+    const resolvedCount = toSafeNonNegativeInt(
+      typeof data.resolvedCount === "number"
+        ? data.resolvedCount
+        : data.resolvedReportsCount
+    );
     return {
       uid: String(data.uid ?? uid),
-      alias: String(data.alias ?? "CivicResident"),
+      alias,
+      displayName: String(data.displayName ?? alias),
       email: String(data.email ?? ""),
+      photoURL: String(data.photoURL ?? ""),
+      role: data.role === "admin" ? "admin" : "citizen",
       leaderboardOptIn: Boolean(data.leaderboardOptIn),
-      civicPoints: toSafeNonNegativeInt(data.civicPoints),
+      civicPoints: points,
+      points,
       acceptedReportsCount: toSafeNonNegativeInt(data.acceptedReportsCount),
-      resolvedReportsCount: toSafeNonNegativeInt(data.resolvedReportsCount),
+      reportsCount,
+      resolvedReportsCount: resolvedCount,
+      resolvedCount,
       createdAtIso: timestampToIso(data.createdAt),
       updatedAtIso: timestampToIso(data.updatedAt),
     };
@@ -111,8 +137,11 @@ export async function syncUserProfileOnSignIn(
     options?.preferredAlias || user.displayName,
     user.email
   );
+  const displayName = (user.displayName ?? alias).replace(/\s+/g, " ").trim().slice(0, 80);
   const leaderboardOptIn = Boolean(options?.leaderboardOptIn ?? false);
   const email = (user.email ?? "").slice(0, 254);
+  const rawPhoto = (user.photoURL ?? "").trim();
+  const photoURL = rawPhoto.startsWith("https://") ? rawPhoto.slice(0, 500) : "";
 
   const userPath = `users/${user.uid}`;
   try {
@@ -122,7 +151,9 @@ export async function syncUserProfileOnSignIn(
     batch.set(doc(db, "users", user.uid), {
       uid: user.uid,
       alias,
+      displayName,
       ...(email ? { email } : {}),
+      ...(photoURL ? { photoURL } : {}),
       role: "citizen",
       leaderboardOptIn,
       civicPoints: 0,
@@ -150,11 +181,17 @@ export async function syncUserProfileOnSignIn(
     return {
       uid: user.uid,
       alias,
+      displayName,
       email,
+      photoURL,
+      role: "citizen",
       leaderboardOptIn,
       civicPoints: 0,
+      points: 0,
       acceptedReportsCount: 0,
+      reportsCount: 0,
       resolvedReportsCount: 0,
+      resolvedCount: 0,
       createdAtIso: new Date().toISOString(),
       updatedAtIso: new Date().toISOString(),
     };
@@ -208,11 +245,17 @@ export async function updateUserProfilePreferences(
       updated ?? {
         uid,
         alias: trimmedAlias,
+        displayName: trimmedAlias,
         email: "",
+        photoURL: "",
+        role: "citizen",
         leaderboardOptIn: Boolean(input.leaderboardOptIn),
         civicPoints: 0,
+        points: 0,
         acceptedReportsCount: 0,
+        reportsCount: 0,
         resolvedReportsCount: 0,
+        resolvedCount: 0,
         createdAtIso: null,
         updatedAtIso: new Date().toISOString(),
       }

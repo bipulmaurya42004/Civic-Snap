@@ -67,11 +67,11 @@ export function CivicHonorsWorkspace() {
 
     const meritPoints = isGuestPreview
       ? DEFAULT_PREVIEW_MERIT_POINTS
-      : (profile?.civicPoints ?? 0);
+      : (profile?.points ?? profile?.civicPoints ?? 0);
 
     const verifiedFixes = isGuestPreview
       ? DEFAULT_PREVIEW_VERIFIED_FIXES
-      : (profile?.resolvedReportsCount ?? 0);
+      : (profile?.resolvedCount ?? profile?.resolvedReportsCount ?? 0);
 
     const citywideRank = isGuestPreview
       ? DEFAULT_PREVIEW_CITYWIDE_RANK
@@ -139,7 +139,7 @@ export function CivicHonorsWorkspace() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-amber-900 uppercase">
                   <Sparkles size={12} aria-hidden="true" />
-                  <span>Sample Preview</span>
+                  <span>[Demo Data] Sample Preview</span>
                 </span>
                 <span className="text-xs font-medium text-slate-500">
                   Interactive 2026 Vanguard Honors Walkthrough

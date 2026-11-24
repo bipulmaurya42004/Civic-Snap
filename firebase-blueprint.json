@@ -16,10 +16,18 @@
           "minLength": 2,
           "maxLength": 40
         },
+        "displayName": {
+          "type": "string",
+          "maxLength": 80
+        },
         "email": {
           "type": "string",
           "format": "email",
           "maxLength": 254
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500
         },
         "role": {
           "type": "string",

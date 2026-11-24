@@ -158,14 +158,21 @@ function buildLocalFallbackProfile(
   nextUser: User,
   options?: SignInOptions
 ): StoredUserProfile {
+  const cleanAlias = sanitizeDisplayAlias(
+    options?.preferredAlias || nextUser.displayName,
+    nextUser.email
+  );
   return {
     uid: nextUser.uid,
-    alias: sanitizeDisplayAlias(
-      options?.preferredAlias || nextUser.displayName,
-      nextUser.email
-    ),
+    alias: cleanAlias,
+    displayName: nextUser.displayName?.trim() || cleanAlias,
     email: nextUser.email ?? "",
+    photoURL: nextUser.photoURL ?? "",
+    role: "citizen",
     leaderboardOptIn: Boolean(options?.leaderboardOptIn ?? false),
+    points: 0,
+    reportsCount: 0,
+    resolvedCount: 0,
     civicPoints: 0,
     acceptedReportsCount: 0,
     resolvedReportsCount: 0,
@@ -436,8 +443,14 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
         setProfile((prev) => ({
           uid: user.uid,
           alias: cleanAlias,
+          displayName: user.displayName?.trim() || prev?.displayName || cleanAlias,
           email: user.email ?? prev?.email ?? "",
+          photoURL: user.photoURL ?? prev?.photoURL ?? "",
+          role: prev?.role ?? "citizen",
           leaderboardOptIn: Boolean(input.leaderboardOptIn),
+          points: prev?.points ?? prev?.civicPoints ?? 0,
+          reportsCount: prev?.reportsCount ?? prev?.acceptedReportsCount ?? 0,
+          resolvedCount: prev?.resolvedCount ?? prev?.resolvedReportsCount ?? 0,
           civicPoints: prev?.civicPoints ?? 0,
           acceptedReportsCount: prev?.acceptedReportsCount ?? 0,
           resolvedReportsCount: prev?.resolvedReportsCount ?? 0,

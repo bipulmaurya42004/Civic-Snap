@@ -7,7 +7,7 @@ import {
 const ALLOWED_MODELS = new Set([
   "gemini-4-hydrogen",
   "gemini-3.1-flash-lite",
-  "gemini-2.5-flash",
+  "gemini-3.8-flash",
 ]);
 
 export function getGeminiServerModel(): string {
@@ -20,7 +20,12 @@ export function getGeminiServerModel(): string {
 
 export function getGeminiCandidateModels(): string[] {
   const primary = getGeminiServerModel();
-  const candidates = [primary, "gemini-4-hydrogen", "gemini-3.1-flash-lite"];
+  const candidates = [
+    primary,
+    "gemini-4-hydrogen",
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+  ];
   return Array.from(new Set(candidates));
 }
 
@@ -52,15 +57,14 @@ export function createGeminiServerClient(): GoogleGenAI | null {
  * Gemini error messages while preserving actionable diagnostics.
  */
 export function sanitizeGeminiErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error ?? "Unknown error");
-  // Redact any key=... query parameter or AIza... token if present
+  const raw =
+    error instanceof Error ? error.message : String(error ?? "Unknown error");
   const redacted = raw
     .replace(/key=[A-Za-z0-9_\-]+/gi, "key=[REDACTED]")
     .replace(/AIza[0-9A-Za-z\-_]{20,}/g, "[REDACTED_KEY]")
     .replace(/\s+/g, " ")
     .trim();
 
-  // Try extracting nested JSON error.message if the SDK stringified an API JSON payload
   try {
     const braceIdx = redacted.indexOf("{");
     if (braceIdx !== -1) {
@@ -79,6 +83,28 @@ export function sanitizeGeminiErrorMessage(error: unknown): string {
   return redacted.slice(0, 320) || "Gemini AI request failed.";
 }
 
+export function isHighDemandOrUnavailableError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("503") ||
+    lower.includes("unavailable") ||
+    lower.includes("high demand") ||
+    lower.includes("overloaded") ||
+    lower.includes("service unavailable") ||
+    lower.includes("temporarily unavailable")
+  );
+}
+
+export function isRateLimitError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("429") ||
+    lower.includes("resource_exhausted") ||
+    lower.includes("quota") ||
+    lower.includes("rate limit")
+  );
+}
+
 function isModelUnavailableError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -90,13 +116,10 @@ function isModelUnavailableError(message: string): boolean {
   );
 }
 
-function isRetryableTransientError(message: string): boolean {
+function isTransientNetworkError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
-    lower.includes("503") ||
     lower.includes("500") ||
-    lower.includes("unavailable") ||
-    lower.includes("overloaded") ||
     lower.includes("econnreset") ||
     lower.includes("fetch failed") ||
     lower.includes("timeout")
@@ -104,19 +127,23 @@ function isRetryableTransientError(message: string): boolean {
 }
 
 /**
- * Executes ai.models.generateContent with automatic retry on transient 5xx/network
- * errors and automatic fallback from gemini-4-hydrogen -> gemini-3.1-flash-lite
- * if a model alias returns 404/NOT_FOUND or thinkingConfig incompatibility.
+ * Executes ai.models.generateContent with automatic fallback across active
+ * Gemini models whenever a model returns 503/high demand, 429/rate-limit,
+ * or 404/NOT_FOUND, ensuring maximum live reliability.
  */
 export async function generateContentResilient(
   ai: GoogleGenAI,
-  buildParams: (model: string, useThinkingConfig: boolean) => GenerateContentParameters
+  buildParams: (
+    model: string,
+    useThinkingConfig: boolean
+  ) => GenerateContentParameters
 ): Promise<GenerateContentResponse> {
   const models = getGeminiCandidateModels();
   let lastError: unknown;
+  let rateLimitError: unknown;
+  let highDemandError: unknown;
 
   for (const model of models) {
-    // gemini-3.1-flash-lite defaults to minimal thinking; keep thinkingConfig optional on fallback
     const useThinking = model === "gemini-4-hydrogen";
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -125,8 +152,16 @@ export async function generateContentResilient(
       } catch (err) {
         lastError = err;
         const msg = sanitizeGeminiErrorMessage(err);
+        console.warn(`[CivicSnap Gemini] ${model} failed: ${msg}`);
 
-        // If thinkingConfig itself caused a 400 error, retry immediately without thinkingConfig
+        if (isRateLimitError(msg) && !rateLimitError) {
+          rateLimitError = err;
+        }
+        if (isHighDemandOrUnavailableError(msg) && !highDemandError) {
+          highDemandError = err;
+        }
+
+        // If thinkingConfig caused a 400 error on this model, retry once without thinkingConfig
         if (
           useThinking &&
           msg.toLowerCase().includes("thinking") &&
@@ -136,16 +171,28 @@ export async function generateContentResilient(
             return await ai.models.generateContent(buildParams(model, false));
           } catch (retryErr) {
             lastError = retryErr;
+            const retryMsg = sanitizeGeminiErrorMessage(retryErr);
+            if (isRateLimitError(retryMsg) && !rateLimitError) {
+              rateLimitError = retryErr;
+            }
+            if (isHighDemandOrUnavailableError(retryMsg) && !highDemandError) {
+              highDemandError = retryErr;
+            }
           }
         }
 
-        // If this model is not found/supported on the user's API key, immediately try next model
-        if (isModelUnavailableError(msg)) {
+        // Immediately fall back to the next model on 503/high-demand, 429/rate-limit, or 404/not-found
+        if (
+          isHighDemandOrUnavailableError(msg) ||
+          isRateLimitError(msg) ||
+          isModelUnavailableError(msg)
+        ) {
           break;
         }
 
-        if (isRetryableTransientError(msg) && attempt === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 600));
+        // Retry once on transient 500/network reset before moving to next model
+        if (isTransientNetworkError(msg) && attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
           continue;
         }
 
@@ -154,5 +201,5 @@ export async function generateContentResilient(
     }
   }
 
-  throw lastError;
+  throw rateLimitError ?? highDemandError ?? lastError;
 }

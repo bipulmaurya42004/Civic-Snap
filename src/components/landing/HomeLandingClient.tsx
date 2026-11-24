@@ -86,7 +86,7 @@ const SAMPLE_CERT_ID = generateCertificateId(
 );
 
 export function HomeLandingClient() {
-  const { user } = useFirebaseAuth();
+  const { user, profile, displayAlias } = useFirebaseAuth();
   const { openAuthModal } = useAuthModal();
   const [auditView, setAuditView] = useState<"before" | "after">("after");
   const [voiceDemoBusy, setVoiceDemoBusy] = useState(false);
@@ -380,7 +380,10 @@ export function HomeLandingClient() {
             <div className="lg:col-span-5">
               <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                      <span>[Demo Data]</span>
+                    </span>
                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
                       <CheckCircle2 size={12} aria-hidden="true" />
                       <span>Verified</span>
@@ -699,28 +702,102 @@ export function HomeLandingClient() {
               </ul>
 
               <div className="mt-7 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleOpenSampleCertificate}
-                  className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
-                >
-                  <FileCheck2 size={16} aria-hidden="true" />
-                  <span>Preview Sample Certificate</span>
-                </button>
-                <Link
-                  href={`/verify/${encodeURIComponent(SAMPLE_CERT_ID)}`}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100"
-                >
-                  <span>Verify Sample ID</span>
-                  <ExternalLink size={14} aria-hidden="true" />
-                </Link>
+                {user ? (
+                  <>
+                    <Link
+                      href="/dashboard"
+                      className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700"
+                    >
+                      <FileCheck2 size={16} aria-hidden="true" />
+                      <span>Open My Live Dashboard</span>
+                    </Link>
+                    <Link
+                      href="/rewards"
+                      className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100"
+                    >
+                      <span>Check Certificate Progress</span>
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleOpenSampleCertificate}
+                      className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
+                    >
+                      <FileCheck2 size={16} aria-hidden="true" />
+                      <span>Preview Sample Certificate [Demo Data]</span>
+                    </button>
+                    <Link
+                      href={`/verify/${encodeURIComponent(SAMPLE_CERT_ID)}`}
+                      className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100"
+                    >
+                      <span>Verify Sample ID</span>
+                      <ExternalLink size={14} aria-hidden="true" />
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* Right Framed Gold-Bordered Independent Certificate Visual Preview */}
+            {/* Right Column: Live Citizen Progress when signed in; clearly labelled [Demo Data] preview ONLY for guests */}
             <div className="lg:col-span-7">
+              {user ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-6 shadow-sm sm:p-8">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      <ShieldCheck size={13} aria-hidden="true" />
+                      <span>Live Firestore Ledger · {displayAlias || user.displayName || "Citizen"}</span>
+                    </span>
+                    <span className="font-mono text-xs font-semibold text-slate-600">
+                      {profile?.resolvedCount ?? profile?.resolvedReportsCount ?? 0} / 5 Verified Fixes
+                    </span>
+                  </div>
+                  <h3 className="mt-4 font-[var(--font-heading)] text-xl font-bold text-slate-900">
+                    {(profile?.resolvedCount ?? profile?.resolvedReportsCount ?? 0) >= 5
+                      ? "Your Cryptographic Civic Merit Certificate Is Unlocked"
+                      : "Certificate Locked Until 5 Verified Fixes"}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {(profile?.resolvedCount ?? profile?.resolvedReportsCount ?? 0) >= 5
+                      ? "Your real Firestore record has reached 5+ verified infrastructure repairs. View and share your cryptographic SHA-256 verification page."
+                      : `Current real progress: ${profile?.resolvedCount ?? profile?.resolvedReportsCount ?? 0} / 5 verified fixes and ${profile?.points ?? profile?.civicPoints ?? 0} Merit Points. Snap a live civic issue to begin.`}
+                  </p>
+                  <div className="mt-5 flex flex-wrap items-center gap-3">
+                    {(profile?.resolvedCount ?? profile?.resolvedReportsCount ?? 0) >= 5 ? (
+                      <Link
+                        href={`/verify/${encodeURIComponent(user.uid)}`}
+                        className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+                      >
+                        <FileCheck2 size={16} aria-hidden="true" />
+                        <span>View &amp; Share Your Cryptographic Certificate</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href="/report"
+                        className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                      >
+                        <Camera size={16} aria-hidden="true" />
+                        <span>Snap Your First Pothole</span>
+                      </Link>
+                    )}
+                    <Link
+                      href="/dashboard"
+                      className="inline-flex min-h-[42px] items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      Go to Dashboard
+                    </Link>
+                  </div>
+                </div>
+              ) : (
               <div className="rounded-2xl border-4 border-double border-amber-500/90 bg-gradient-to-b from-amber-50/40 via-white to-amber-50/30 p-3 shadow-md sm:p-5">
                 <div className="rounded-xl border border-amber-300/80 bg-white px-5 py-6 text-center sm:px-8 sm:py-8">
+                  <div className="mb-2 flex justify-center">
+                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-amber-900 uppercase">
+                      [Demo Data] Guest Sample Preview
+                    </span>
+                  </div>
                   <p className="text-[10px] font-bold tracking-[0.16em] text-blue-700 uppercase">
                     {CERTIFICATE_RECORD_LABEL} • BENGALURU 2026
                   </p>
@@ -807,6 +884,7 @@ export function HomeLandingClient() {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           </div>
         </div>
