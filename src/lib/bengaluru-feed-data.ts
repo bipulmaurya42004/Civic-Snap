@@ -132,7 +132,7 @@ export const BENGALURU_FEED_ISSUES: readonly BengaluruFeedIssue[] = [
     category: "pothole",
     status: "resolved",
     summary:
-      "Cracked concrete curb and gravel crater resurfaced with hot-mix asphalt. Gemini Vision verified the contractor's repair photo at 94.8% match.",
+      "Cracked concrete curb and gravel crater resurfaced with hot-mix asphalt. Gemini Vision recorded a 94.8% AI Confidence Score on the repair photo.",
     imageUrl: "/demo/pothole-fixed.jpg",
     imageAlt: "Freshly patched and smooth asphalt surface on 12th Main Rd Indiranagar",
     beforeImageUrl: "/demo/pothole.jpg",
@@ -347,10 +347,10 @@ export interface CitizenStarEntry {
   verifiedFixes: number;
   reportsAccepted: number;
   tierLabel:
-    | "CM Civic Laureate"
-    | "National Civic Vanguard"
-    | "State Infrastructure Guardian"
-    | "State Urban Sentinel"
+    | "Civic Vanguard Laureate"
+    | "Bengaluru Civic Vanguard"
+    | "Infrastructure Audit Guardian"
+    | "Bengaluru Urban Sentinel"
     | "Ward Scout";
   specialty: string;
   isCmContender: boolean;
@@ -365,7 +365,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 1480,
     verifiedFixes: 32,
     reportsAccepted: 38,
-    tierLabel: "CM Civic Laureate",
+    tierLabel: "Civic Vanguard Laureate",
     specialty: "Road & Hospital Zone Audits",
     isCmContender: true,
   },
@@ -377,7 +377,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 1345,
     verifiedFixes: 28,
     reportsAccepted: 33,
-    tierLabel: "CM Civic Laureate",
+    tierLabel: "Civic Vanguard Laureate",
     specialty: "Sanitation & Footpath Safety",
     isCmContender: true,
   },
@@ -389,7 +389,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 1240,
     verifiedFixes: 24,
     reportsAccepted: 29,
-    tierLabel: "CM Civic Laureate",
+    tierLabel: "Civic Vanguard Laureate",
     specialty: "School Zone Streetlights",
     isCmContender: true,
   },
@@ -401,7 +401,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 1165,
     verifiedFixes: 21,
     reportsAccepted: 25,
-    tierLabel: "CM Civic Laureate",
+    tierLabel: "Civic Vanguard Laureate",
     specialty: "ITPL Corridor Potholes",
     isCmContender: true,
   },
@@ -413,7 +413,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 1100,
     verifiedFixes: 19,
     reportsAccepted: 23,
-    tierLabel: "CM Civic Laureate",
+    tierLabel: "Civic Vanguard Laureate",
     specialty: "Pedestrian Kerb Repairs",
     isCmContender: true,
   },
@@ -425,7 +425,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 990,
     verifiedFixes: 17,
     reportsAccepted: 21,
-    tierLabel: "State Infrastructure Guardian",
+    tierLabel: "Infrastructure Audit Guardian",
     specialty: "Heritage Lane Lighting",
     isCmContender: false,
   },
@@ -437,7 +437,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 925,
     verifiedFixes: 16,
     reportsAccepted: 19,
-    tierLabel: "State Infrastructure Guardian",
+    tierLabel: "Infrastructure Audit Guardian",
     specialty: "Metro Approach Safety",
     isCmContender: false,
   },
@@ -449,7 +449,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 865,
     verifiedFixes: 15,
     reportsAccepted: 18,
-    tierLabel: "State Infrastructure Guardian",
+    tierLabel: "Infrastructure Audit Guardian",
     specialty: "Drainage & Asphalt Audits",
     isCmContender: false,
   },
@@ -461,7 +461,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 810,
     verifiedFixes: 12,
     reportsAccepted: 15,
-    tierLabel: "State Urban Sentinel",
+    tierLabel: "Bengaluru Urban Sentinel",
     specialty: "Lake Road Waste Clearance",
     isCmContender: false,
   },
@@ -473,7 +473,7 @@ export const CITIZEN_STARS_TOP_10: readonly CitizenStarEntry[] = [
     civicPoints: 775,
     verifiedFixes: 10,
     reportsAccepted: 14,
-    tierLabel: "State Urban Sentinel",
+    tierLabel: "Bengaluru Urban Sentinel",
     specialty: "Hinglish Voice Reporting",
     isCmContender: false,
   },
@@ -515,11 +515,11 @@ export function buildCitizenStarsLeaderboard(
     const fixes = Math.max(0, profile.resolvedReportsCount ?? 0);
     const tierLabel: CitizenStarEntry["tierLabel"] =
       fixes >= 30
-        ? "National Civic Vanguard"
+        ? "Bengaluru Civic Vanguard"
         : fixes >= 15
-          ? "State Infrastructure Guardian"
+          ? "Infrastructure Audit Guardian"
           : fixes >= 5
-            ? "State Urban Sentinel"
+            ? "Bengaluru Urban Sentinel"
             : "Ward Scout";
     byAlias.set(key, {
       rank: 0,
@@ -550,7 +550,7 @@ export function buildCitizenStarsLeaderboard(
         ...entry,
         rank,
         isCmContender,
-        tierLabel: isCmContender ? "CM Civic Laureate" : entry.tierLabel,
+        tierLabel: isCmContender ? "Civic Vanguard Laureate" : entry.tierLabel,
       };
     });
 }
@@ -583,7 +583,7 @@ export const JUDGE_DEMO_VERIFICATIONS: readonly JudgeVerificationItem[] = [
     title: "100ft Road Severe Pothole near Chinmaya Mission Hospital",
     ward: "Indiranagar",
     streetAddress: "100ft Road, Indiranagar",
-    contractorName: "BBMP East RoadWorks Unit #4",
+    contractorName: "East Zone RoadWorks Maintenance Unit #4",
     lat: 12.9789,
     lng: 77.6447,
     highPriorityZone: true,
@@ -591,7 +591,7 @@ export const JUDGE_DEMO_VERIFICATIONS: readonly JudgeVerificationItem[] = [
     beforeImageUrl: "/demo/pothole.jpg",
     afterImageUrl: "/demo/pothole-fixed.jpg",
     aiMatchPercent: 94.8,
-    aiHeadline: "94.8% Match — Surface Repair Verified",
+    aiHeadline: "94.8% AI Confidence Score — Surface Repair Verified",
     aiSummary:
       "Same curb geometry and white lane marking confirmed. Gravel crater is fully compacted and sealed with fresh hot-mix asphalt flush to road grade.",
     materialClaimed: "145 kg hot-mix asphalt · 2L tack coat",
@@ -613,7 +613,7 @@ export const JUDGE_DEMO_VERIFICATIONS: readonly JudgeVerificationItem[] = [
     beforeImageUrl: "/demo/pothole.jpg",
     afterImageUrl: "/demo/pothole-fixed.jpg",
     aiMatchPercent: 91.6,
-    aiHeadline: "91.6% Match — Surface Repair Verified",
+    aiHeadline: "91.6% AI Confidence Score — Surface Repair Verified",
     aiSummary:
       "Broken pavement edge cleared of loose debris and leveled smoothly alongside the school crossing kerb.",
     materialClaimed: "110 kg rapid-set mortar · 1.5L primer",
@@ -635,14 +635,14 @@ export const JUDGE_DEMO_VERIFICATIONS: readonly JudgeVerificationItem[] = [
     beforeImageUrl: "/demo/waste.jpg",
     afterImageUrl: "/demo/waste.jpg",
     aiMatchPercent: 38.4,
-    aiHeadline: "38.4% Match — Duplicate Photo Flagged",
+    aiHeadline: "38.4% AI Confidence Score — Duplicate Photo Flagged",
     aiSummary:
-      "After photo shows identical overflowing bags and cardboard at the curb. Recommend rejecting contractor claim and keeping issue In Progress.",
+      "After photo shows identical overflowing bags and cardboard at the curb. Recommend rejecting claim and keeping issue Needs Review.",
     materialClaimed: "1 Compactor pickup + sanitization",
     materialAudited: "No visible clearance detected — Flagged for re-inspection",
     estimatedCost: "₹1,650 (Held)",
     reporterAlias: "KoramangalaWatch",
-    rewardPoints: 50,
+    rewardPoints: 0,
   },
 ] as const;
 

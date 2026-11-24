@@ -9,6 +9,7 @@ import {
   Award,
   Calendar,
   CheckCircle2,
+  Hash,
   Landmark,
   Loader2,
   MapPin,
@@ -18,12 +19,17 @@ import {
 import { db } from "@/lib/firebase";
 import {
   ANNUAL_CM_SEASON_YEAR,
-  ANNUAL_CM_SUMMIT_TITLE,
   buildCertificateVerifyUrl,
+  CERTIFICATE_HEADER_TITLE,
+  CERTIFICATE_RECORD_LABEL,
+  computeCertificateSha256,
   formatCertificateIssueDate,
   parseCertificateId,
 } from "@/lib/civic-honors";
-import { CITIZEN_STARS_TOP_10, generateQrMatrix } from "@/lib/bengaluru-feed-data";
+import {
+  CITIZEN_STARS_TOP_10,
+  generateQrMatrix,
+} from "@/lib/bengaluru-feed-data";
 import { PageTransition } from "@/components/ui/MotionPrimitives";
 
 interface VerifiedCredentialRecord {
@@ -32,6 +38,7 @@ interface VerifiedCredentialRecord {
   ward: string;
   verifiedFixes: number;
   meritPoints: number;
+  milestoneLevel: number;
   issuedDate: string;
   milestoneLabel: string;
   source: "firestore" | "pilot-demo";
@@ -53,11 +60,12 @@ export function CertificateVerifyClient({
         return {
           certificateId: parsed.raw,
           recipientName: "Aarav Sharma",
-          ward: "Ward 82 · Indiranagar, Bengaluru Urban",
+          ward: "Ward 82 · Indiranagar, Bengaluru",
           verifiedFixes: 7,
           meritPoints: 750,
+          milestoneLevel: parsed.milestoneLevel,
           issuedDate: formatCertificateIssueDate(new Date("2026-11-23T00:00:00Z")),
-          milestoneLabel: `Level ${parsed.milestoneLevel} · State Urban Sentinel`,
+          milestoneLabel: `Level ${parsed.milestoneLevel} · Bengaluru Urban Sentinel`,
           source: "pilot-demo",
         };
       }
@@ -101,12 +109,13 @@ export function CertificateVerifyClient({
               if (!cancelled) {
                 setCredential({
                   certificateId: parsed.raw,
-                  recipientName: String(data.alias ?? "Bengaluru Citizen Steward"),
-                  ward: "Bengaluru Urban",
+                  recipientName: String(data.alias ?? "Bengaluru Citizen Auditor"),
+                  ward: "Bengaluru Pilot",
                   verifiedFixes: Math.max(fixes, parsed.milestoneLevel * 5),
                   meritPoints: points,
+                  milestoneLevel: parsed.milestoneLevel,
                   issuedDate: formatCertificateIssueDate(),
-                  milestoneLabel: `Level ${parsed.milestoneLevel} · Official State Civic Merit`,
+                  milestoneLabel: `Level ${parsed.milestoneLevel} · Bengaluru Civic Vanguard Citation`,
                   source: "firestore",
                 });
                 setLoading(false);
@@ -140,23 +149,24 @@ export function CertificateVerifyClient({
           setCredential({
             certificateId: parsed.raw,
             recipientName: matchedPilot.alias,
-            ward: `${matchedPilot.ward}, Bengaluru Urban`,
+            ward: `${matchedPilot.ward}, Bengaluru`,
             verifiedFixes: matchedPilot.verifiedFixes,
             meritPoints: matchedPilot.civicPoints,
+            milestoneLevel: parsed.milestoneLevel,
             issuedDate: formatCertificateIssueDate(),
             milestoneLabel: `Level ${parsed.milestoneLevel} · ${matchedPilot.tierLabel}`,
             source: "pilot-demo",
           });
         } else if (parsed.year === ANNUAL_CM_SEASON_YEAR) {
-          // Valid CS-BLR-2026-* credential generated for a verified citizen whose profile is private
           setCredential({
             certificateId: parsed.raw,
-            recipientName: "Verified Bengaluru Citizen Steward",
-            ward: "Bengaluru Urban Pilot Corridor",
+            recipientName: "Verified Bengaluru Citizen Auditor",
+            ward: "Bengaluru Pilot Corridor",
             verifiedFixes: parsed.milestoneLevel * 5,
             meritPoints: parsed.milestoneLevel * 250,
+            milestoneLevel: parsed.milestoneLevel,
             issuedDate: formatCertificateIssueDate(),
-            milestoneLabel: `Level ${parsed.milestoneLevel} · State Civic Merit Credential`,
+            milestoneLabel: `Level ${parsed.milestoneLevel} · Bengaluru Civic Merit Record`,
             source: "firestore",
           });
         }
@@ -175,11 +185,26 @@ export function CertificateVerifyClient({
     [parsed.raw, certificateId]
   );
 
+  const sha256Hash = useMemo(
+    () =>
+      credential
+        ? computeCertificateSha256({
+            certificateId: credential.certificateId,
+            recipientName: credential.recipientName,
+            ward: credential.ward,
+            verifiedFixes: credential.verifiedFixes,
+            meritPoints: credential.meritPoints,
+            milestoneLevel: credential.milestoneLevel,
+          })
+        : "",
+    [credential]
+  );
+
   const qrMatrix = useMemo(() => generateQrMatrix(verifyUrl), [verifyUrl]);
 
   return (
     <PageTransition className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/rewards"
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 transition-colors hover:text-blue-600"
@@ -188,7 +213,7 @@ export function CertificateVerifyClient({
           <span>Back to Civic Honors</span>
         </Link>
         <span className="font-mono text-xs font-semibold text-slate-500">
-          {ANNUAL_CM_SUMMIT_TITLE}
+          {CERTIFICATE_RECORD_LABEL}
         </span>
       </div>
 
@@ -203,7 +228,7 @@ export function CertificateVerifyClient({
             aria-hidden="true"
           />
           <p className="mt-4 text-sm font-semibold text-slate-900">
-            Validating credential against CivicSnap 2026 ledger...
+            Validating credential against CivicSnap 2026 open civic ledger...
           </p>
           <p className="mt-1 font-mono text-xs text-slate-500">
             {parsed.raw}
@@ -225,7 +250,7 @@ export function CertificateVerifyClient({
             <strong className="font-mono text-slate-900">
               {parsed.raw || certificateId}
             </strong>{" "}
-            does not match the official 2026 Bengaluru Urban Civic Merit format (
+            does not match the 2026 CivicSnap open audit credential format (
             <code className="font-mono text-xs">CS-BLR-2026-XXXXXX</code>).
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -248,19 +273,20 @@ export function CertificateVerifyClient({
           data-testid="verified-credential-card"
           className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-md"
         >
-          {/* Top Official Verified Banner */}
+          {/* Top Independent Verification Banner */}
           <div className="border-b border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-amber-50/60 px-6 py-6 sm:px-8">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300 bg-emerald-50 px-3.5 py-1.5 text-xs font-bold tracking-wide text-emerald-800">
               <CheckCircle2 size={15} aria-hidden="true" />
-              <span>
-                OFFICIALLY VERIFIED &amp; ACTIVE CIVIC CREDENTIAL (2026)
-              </span>
+              <span>{CERTIFICATE_RECORD_LABEL} (2026)</span>
             </div>
 
-            <h1 className="mt-4 font-[var(--font-heading)] text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-              {credential.recipientName}
+            <h1 className="mt-4 font-[var(--font-heading)] text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+              {CERTIFICATE_HEADER_TITLE}
             </h1>
-            <p className="mt-1 text-sm font-semibold text-amber-800">
+            <p className="mt-2 text-lg font-bold text-blue-900">
+              {credential.recipientName}
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-amber-800">
               {credential.milestoneLabel}
             </p>
           </div>
@@ -293,12 +319,12 @@ export function CertificateVerifyClient({
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4">
                 <dt className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                   <Landmark size={13} aria-hidden="true" />
-                  <span>Issuing Authority</span>
+                  <span>Issuing Record</span>
                 </dt>
                 <dd className="mt-1 text-sm font-bold leading-5 text-slate-900">
-                  Urban Infrastructure Collaborative &amp; CivicSnap AI
+                  CivicSnap AI (Independent Prototype)
                   <span className="mt-0.5 block text-xs font-medium text-blue-700">
-                    {ANNUAL_CM_SUMMIT_TITLE}
+                    {CERTIFICATE_RECORD_LABEL}
                   </span>
                 </dd>
               </div>
@@ -306,7 +332,7 @@ export function CertificateVerifyClient({
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4">
                 <dt className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                   <MapPin size={13} aria-hidden="true" />
-                  <span>Jurisdiction &amp; Verified Fixes</span>
+                  <span>Ward &amp; Verified Fixes</span>
                 </dt>
                 <dd className="mt-1 text-sm font-bold text-slate-900">
                   <span className="font-mono tabular-nums text-blue-700">
@@ -323,22 +349,42 @@ export function CertificateVerifyClient({
               </div>
             </dl>
 
-            {/* Tamper Check & Seal Strip */}
-            <div className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 sm:flex-row sm:items-center">
+            {/* Cryptographic SHA-256 Hash Strip */}
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center gap-1.5 text-xs font-bold tracking-wide text-slate-600 uppercase">
+                <Hash size={13} className="text-blue-600" aria-hidden="true" />
+                <span>Cryptographic SHA-256 Digest</span>
+              </div>
+              <p
+                data-testid="verify-sha256-hash"
+                className="mt-1.5 break-all font-mono text-xs font-semibold text-slate-900"
+              >
+                {sha256Hash}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Computed deterministically over Certificate ID, recipient, ward,
+                verified fix count, and merit points for tamper-evident public
+                verification.
+              </p>
+            </div>
+
+            {/* Tamper Check & QR Strip */}
+            <div className="mt-5 flex flex-col justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 sm:flex-row sm:items-center">
               <div className="flex items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
                   <ShieldCheck size={20} aria-hidden="true" />
                 </span>
                 <div>
                   <p className="text-sm font-bold text-emerald-950">
-                    Tamper Check: Passed
+                    Tamper Check: Passed · {CERTIFICATE_RECORD_LABEL}
                   </p>
                   <p className="mt-0.5 text-xs leading-5 text-emerald-800">
-                    Cryptographically validated against{" "}
+                    Validated against{" "}
                     {credential.source === "firestore"
-                      ? "live 2026 Firestore civic records"
-                      : "Bengaluru Urban Governance Summit 2026 registry"}
-                    .
+                      ? "live 2026 Firestore civic audit records"
+                      : "CivicSnap 2026 open civic prototype registry"}
+                    . Independent citizen prototype — not an official government
+                    credential.
                   </p>
                 </div>
               </div>
@@ -368,7 +414,9 @@ export function CertificateVerifyClient({
                   className="text-amber-600"
                   aria-hidden="true"
                 />
-                <span>Eligible for 2026 Chief Minister&apos;s Civic Honors</span>
+                <span>
+                  Eligible for 2026 Bengaluru Civic Vanguard Citation Shortlist
+                </span>
               </span>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -377,7 +425,7 @@ export function CertificateVerifyClient({
                   className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50/70 px-4 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
                 >
                   <Award size={14} aria-hidden="true" />
-                  <span>2026 CM Standings</span>
+                  <span>2026 Vanguard Standings</span>
                 </Link>
                 <Link
                   href="/feed"

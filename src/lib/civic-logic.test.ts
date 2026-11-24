@@ -28,13 +28,25 @@ import {
   buildCertificateVerifyUrl,
   buildLinkedInAddCertificationUrl,
   buildLinkedInShareUrl,
+  CERTIFICATE_HEADER_TITLE,
+  CERTIFICATE_RECORD_LABEL,
   CM_ANNUAL_AWARD_PERKS,
+  computeCertificateSha256,
   computeCitizenHonorsSnapshot,
   computeSeasonCountdown2026,
   evaluateStateCivicBadges,
   generateCertificateId,
   parseCertificateId,
 } from "./civic-honors";
+import {
+  computeHammingDistance,
+  computeSha256Hex,
+  evaluateDailyLimit,
+  evaluateExifFraudFlags,
+  evaluateLocationCooldown,
+  haversineDistanceMeters,
+  isDuplicateImageHash,
+} from "./anti-spam";
 import { DEMO_ISSUES, DEMO_PROFILES, DEMO_REFERENCE_DATE } from "./demo-data";
 import {
   buildBeforeAfterVerificationPrompt,
@@ -152,7 +164,7 @@ test("filterIssuesByDateRange filters to recent 7-day window accurately", () => 
   );
 });
 
-test("deriveLeaderboard awards 10 pts for accepted and 25 pts for resolved reports and respects opt-in", () => {
+test("deriveLeaderboard awards 0 pts on pending/accepted and +50 pts strictly on verified resolved reports while respecting opt-in", () => {
   const extraIssues: PublicIssueRecord[] = [
     ...DEMO_ISSUES,
     // Duplicate of an existing report ID should not double-count
@@ -189,38 +201,85 @@ test("deriveLeaderboard awards 10 pts for accepted and 25 pts for resolved repor
     false
   );
 
-  // demo-u1 has 3 pending accepted reports => 30 pts (Bronze / Street Watcher)
-  assert.equal(board[0].alias, "CommuterNorth");
-  assert.equal(board[0].acceptedReports, 3);
-  assert.equal(board[0].resolvedReports, 0);
-  assert.equal(board[0].points, 30);
-  assert.equal(board[0].levelBadge.tier, "bronze");
-  assert.equal(board[0].levelBadge.rankTitle, "Street Watcher");
+  // demo-u3 (StreetWatch04) has 1 resolved accepted report => 50 pts (rank 1)
+  assert.equal(board[0].alias, "StreetWatch04");
+  assert.equal(board[0].resolvedReports, 1);
+  assert.equal(board[0].points, 50);
   assert.equal(board[0].rank, 1);
 
-  // demo-u3 (StreetWatch04) has 1 resolved => 25 pts; demo-u2 (CivicWalker) has 1 in_progress => 10 pts
-  assert.equal(board[1].alias, "StreetWatch04");
-  assert.equal(board[1].resolvedReports, 1);
-  assert.equal(board[1].points, 25);
-  assert.equal(board[2].alias, "CivicWalker");
-  assert.equal(board[2].points, 10);
+  // demo-u1 only has pending/unverified reports => 0 pts, excluded from points rankings
+  assert.equal(
+    board.some((entry) => entry.alias === "CommuterNorth"),
+    false
+  );
 });
 
-test("computeReportCivicPoints & computeCivicPointsDelta award 10 for Accepted, 25 for Resolved, and never double-count", () => {
+test("computeReportCivicPoints & computeCivicPointsDelta award 0 on submit/accept and +50 strictly on Verified + Resolved + AI Confidence >= 90%", () => {
   assert.equal(computeReportCivicPoints("pending", "unreviewed"), 0);
-  assert.equal(computeReportCivicPoints("pending", "accepted"), 10);
-  assert.equal(computeReportCivicPoints("in_progress", "accepted"), 10);
-  assert.equal(computeReportCivicPoints("resolved", "accepted"), 25);
-  assert.equal(computeReportCivicPoints("resolved", "duplicate", "CS-1"), 0);
+  assert.equal(computeReportCivicPoints("pending", "accepted"), 0);
+  assert.equal(computeReportCivicPoints("in_progress", "accepted"), 0);
+  // Resolved without verified status => 0
+  assert.equal(
+    computeReportCivicPoints("resolved", "accepted", null, {
+      verificationStatus: "pending",
+      aiConfidenceScore: 95,
+    }),
+    0
+  );
+  // Resolved + verified but AI confidence < 90 => 0
+  assert.equal(
+    computeReportCivicPoints("resolved", "accepted", null, {
+      verificationStatus: "verified",
+      aiConfidenceScore: 85,
+    }),
+    0
+  );
+  // Resolved + verified + AI confidence >= 90 => 50
+  assert.equal(
+    computeReportCivicPoints("resolved", "accepted", null, {
+      verificationStatus: "verified",
+      aiConfidenceScore: 92,
+    }),
+    50
+  );
+  // Cooldown applied => 0
+  assert.equal(
+    computeReportCivicPoints("resolved", "accepted", null, {
+      verificationStatus: "verified",
+      aiConfidenceScore: 95,
+      locationCooldownApplied: true,
+    }),
+    0
+  );
+  // Duplicate => 0
+  assert.equal(
+    computeReportCivicPoints("resolved", "duplicate", "CS-1", {
+      verificationStatus: "verified",
+      aiConfidenceScore: 98,
+    }),
+    0
+  );
 
-  // Transition unreviewed (0) -> accepted (10) => +10
-  assert.equal(computeCivicPointsDelta(0, "pending", "accepted"), 10);
-  // Transition accepted (10) -> resolved (25) => +15 (total 25)
-  assert.equal(computeCivicPointsDelta(10, "resolved", "accepted"), 15);
-  // Saving resolved again => 0 delta (idempotent)
-  assert.equal(computeCivicPointsDelta(25, "resolved", "accepted"), 0);
-  // Reversing an accepted report to rejected => -10 delta
-  assert.equal(computeCivicPointsDelta(10, "pending", "rejected"), -10);
+  // Transition unreviewed (0) -> accepted pending (0) => 0 delta
+  assert.equal(computeCivicPointsDelta(0, "pending", "accepted"), 0);
+  // Transition accepted (0) -> verified resolved >= 90% => +50
+  assert.equal(
+    computeCivicPointsDelta(0, "resolved", "accepted", null, {
+      verificationStatus: "verified",
+      aiConfidenceScore: 94,
+    }),
+    50
+  );
+  // Saving verified resolved again => 0 delta (idempotent)
+  assert.equal(
+    computeCivicPointsDelta(50, "resolved", "accepted", null, {
+      verificationStatus: "verified",
+      aiConfidenceScore: 94,
+    }),
+    0
+  );
+  // Reversing a verified resolved report to rejected => -50 delta
+  assert.equal(computeCivicPointsDelta(50, "pending", "rejected"), -50);
 });
 
 test("getCivicLevelBadge maps 0-50 Bronze (Street Watcher), 51-200 Silver (Eco Warrior), and 200+ Gold (City Guardian)", () => {
@@ -283,9 +342,12 @@ test("computeAdminReportStats calculates Total, Pending, In Progress, and Resolv
   });
 });
 
-test("State Civic Honors 2026 snapshot, 5-tier badges, tamper-proof IDs, verification parser, LinkedIn URLs, and HTML export work deterministically", () => {
+test("Bengaluru Civic Vanguard 2026 snapshot, 5-tier badges, SHA-256 tamper-evident IDs, verification parser, LinkedIn URLs, and compliant HTML export work deterministically", () => {
   assert.equal(ANNUAL_CM_SEASON_YEAR, 2026);
-  assert.equal(ANNUAL_CM_SUMMIT_TITLE, "Bengaluru Urban Governance Summit 2026");
+  assert.equal(
+    ANNUAL_CM_SUMMIT_TITLE,
+    "CivicSnap Independent Community Civic Audit Cycle 2026"
+  );
   assert.equal(CM_ANNUAL_AWARD_PERKS.length, 4);
 
   // Guest / Demo sample ID strictly matches CS-BLR-2026-DEMO
@@ -298,7 +360,7 @@ test("State Civic Honors 2026 snapshot, 5-tier badges, tamper-proof IDs, verific
   assert.equal(uidCertL1, "CS-BLR-2026-AB12CD");
   assert.equal(uidCertL2, "CS-BLR-2026-AB12CD-L2");
 
-  // Tamper-proof parser and public verification URL builder
+  // Tamper-evident parser and public verification URL builder
   assert.equal(
     buildCertificateVerifyUrl(uidCertL1),
     "https://civicsnap-ai.vercel.app/verify/CS-BLR-2026-AB12CD"
@@ -336,16 +398,16 @@ test("State Civic Honors 2026 snapshot, 5-tier badges, tamper-proof IDs, verific
   assert.equal(snapshot.citywideRank, 12);
   assert.equal(snapshot.pointsToTop5, 350);
   assert.equal(snapshot.isTop5Finalist, false);
-  assert.equal(snapshot.currentBadge.title, "State Urban Sentinel");
+  assert.equal(snapshot.currentBadge.title, "Bengaluru Urban Sentinel");
   assert.equal(snapshot.unlockedCertificateCount, 1);
 
   const badges = evaluateStateCivicBadges(7, 12);
   assert.equal(badges.length, 5);
   assert.equal(badges[0].unlocked, true); // Ward Scout
-  assert.equal(badges[1].unlocked, true); // State Urban Sentinel
-  assert.equal(badges[2].unlocked, false); // State Infrastructure Guardian
+  assert.equal(badges[1].unlocked, true); // Bengaluru Urban Sentinel
+  assert.equal(badges[2].unlocked, false); // Infrastructure Audit Guardian
   assert.equal(badges[2].fixesRemaining, 8);
-  assert.equal(badges[4].unlocked, false); // CM Civic Laureate (Top 5 only)
+  assert.equal(badges[4].unlocked, false); // Civic Vanguard Laureate (Top 5 only)
 
   const top5Badges = evaluateStateCivicBadges(28, 2);
   assert.equal(top5Badges[4].unlocked, true);
@@ -361,11 +423,15 @@ test("State Civic Honors 2026 snapshot, 5-tier badges, tamper-proof IDs, verific
     ward: "Indiranagar",
     verifiedFixes: 7,
     milestoneLevel: 1,
-    milestoneTitle: "Official Civic Merit Certificate (Level 1: 5 Verified Fixes)",
+    milestoneTitle: "Civic Merit Certificate (Level 1: 5 Verified Fixes)",
     certificateId: demoId,
     issuedDate: "23 November 2026",
     meritPoints: 750,
   };
+  const sha = computeCertificateSha256(sampleCert);
+  assert.match(sha, /^[0-9a-f]{64}$/);
+  assert.equal(sha, computeCertificateSha256(sampleCert));
+
   const linkedInUrl = buildLinkedInShareUrl(sampleCert);
   assert.match(linkedInUrl, /^https:\/\/www\.linkedin\.com\/feed\/\?shareActive=true&text=/);
   assert.ok(decodeURIComponent(linkedInUrl).includes(demoId));
@@ -376,11 +442,14 @@ test("State Civic Honors 2026 snapshot, 5-tier badges, tamper-proof IDs, verific
   assert.ok(addCertUrl.includes("issueYear=2026"));
 
   const html = buildCertificateHtmlDocument(sampleCert);
-  assert.ok(html.includes("GOVERNMENT OF KARNATAKA"));
-  assert.ok(html.includes("Bengaluru Urban Governance Summit 2026"));
-  assert.ok(html.includes("CERTIFICATE OF CIVIC MERIT"));
+  assert.ok(html.includes(CERTIFICATE_HEADER_TITLE));
+  assert.ok(html.includes(CERTIFICATE_RECORD_LABEL));
+  assert.ok(html.includes(sha));
   assert.ok(html.includes("Aarav Sharma"));
   assert.ok(html.includes(demoId));
+  // Strictly ensure zero fabricated government titles appear
+  assert.equal(html.toLowerCase().includes("government of karnataka"), false);
+  assert.equal(html.toLowerCase().includes("urban dev. directorate"), false);
 });
 
 test("validatePhotoFileMeta supports mobile MIME types, AVIF/JFIF/octet-stream, blocks SVG/PDF, and enforces size cap", () => {
@@ -768,7 +837,7 @@ test("Bengaluru Feed filters, upvote sorting, Ward Wars podium, Judge audits, an
     JUDGE_DEMO_VERIFICATIONS.some((item) => item.aiMatchPercent < 50)
   );
 
-  // Resolved public feed items include Before/After photos and AI visual match score
+  // Resolved public feed items include Before/After photos and AI Confidence Score >= 90%
   const resolvedItems = BENGALURU_FEED_ISSUES.filter(
     (item) => item.status === "resolved"
   );
@@ -810,5 +879,109 @@ test("Bengaluru Feed filters, upvote sorting, Ward Wars podium, Judge audits, an
   assert.equal(qrA[0]?.length, 9);
   assert.deepEqual(qrA, qrB);
 });
+
+test("Anti-spam layer: SHA-256 NIST vector, Haversine distance, EXIF GPS/24h flags, perceptual hash duplicate detection, daily limit, and 50m/30d cooldown", () => {
+  // Standard NIST SHA-256 test vector for "abc"
+  assert.equal(
+    computeSha256Hex("abc"),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  );
+
+  // Haversine distance checks
+  assert.equal(haversineDistanceMeters(12.9784, 77.6408, 12.9784, 77.6408), 0);
+  const distFar = haversineDistanceMeters(12.9784, 77.6408, 12.9884, 77.6408);
+  assert.ok(distFar > 1000);
+  const distNear = haversineDistanceMeters(12.9784, 77.6408, 12.9785, 77.6409);
+  assert.ok(distNear < 50);
+
+  // EXIF GPS > 500m & Timestamp > 24h flagging
+  const nowMs = new Date("2026-11-24T12:00:00.000Z").getTime();
+  const cleanExif = evaluateExifFraudFlags({
+    exifLat: 12.97845,
+    exifLng: 77.64085,
+    exifTimestampMs: new Date("2026-11-24T10:30:00.000Z").getTime(),
+    reportedLat: 12.9784,
+    reportedLng: 77.6408,
+    nowMs,
+  });
+  assert.equal(cleanExif.needsReview, false);
+  assert.equal(cleanExif.reasons.length, 0);
+
+  const flaggedExif = evaluateExifFraudFlags({
+    exifLat: 12.99,
+    exifLng: 77.6408,
+    exifTimestampMs: new Date("2026-11-22T06:00:00.000Z").getTime(),
+    reportedLat: 12.9784,
+    reportedLng: 77.6408,
+    nowMs,
+  });
+  assert.equal(flaggedExif.needsReview, true);
+  assert.equal(flaggedExif.reasons.length, 2);
+
+  // Perceptual 64-bit hash Hamming distance & duplicate detection
+  const hashA = "0011223344556677";
+  const hashNear = "001122334455667f"; // 1 bit diff
+  const hashDiff = "ffeeddccbbaa9988"; // very different
+  assert.equal(computeHammingDistance(hashA, hashA), 0);
+  assert.equal(computeHammingDistance(hashA, hashNear), 1);
+  assert.equal(isDuplicateImageHash(hashA, hashNear), true);
+  assert.equal(isDuplicateImageHash(hashA, hashDiff), false);
+
+  // Daily submission cap (max 5/day)
+  const todayIso = "2026-11-24T08:00:00.000Z";
+  const yesterdayIso = "2026-11-23T08:00:00.000Z";
+  assert.equal(
+    evaluateDailyLimit([todayIso, todayIso, todayIso, todayIso, yesterdayIso], nowMs)
+      .allowed,
+    true
+  );
+  assert.equal(
+    evaluateDailyLimit(
+      [todayIso, todayIso, todayIso, todayIso, todayIso],
+      nowMs
+    ).allowed,
+    false
+  );
+
+  // 50m / 30-day location cooldown
+  const withinCooldown = evaluateLocationCooldown(
+    [
+      {
+        id: "CS-OLD-1",
+        privateLat: 12.9785,
+        privateLng: 77.6409,
+        createdAtIso: "2026-11-10T10:00:00.000Z",
+      },
+    ],
+    12.9784,
+    77.6408,
+    nowMs
+  );
+  assert.equal(withinCooldown.onCooldown, true);
+  assert.equal(withinCooldown.nearestReportId, "CS-OLD-1");
+
+  const outsideCooldown = evaluateLocationCooldown(
+    [
+      {
+        id: "CS-OLD-2",
+        privateLat: 12.9785,
+        privateLng: 77.6409,
+        createdAtIso: "2026-09-01T10:00:00.000Z",
+      },
+    ],
+    12.9784,
+    77.6408,
+    nowMs
+  );
+  assert.equal(outsideCooldown.onCooldown, false);
+
+  // Duplicate & Daily Limit submit error parsing
+  const dupErr = parseFirestoreSubmitError(
+    new Error("This image was already submitted."),
+    true
+  );
+  assert.match(dupErr.message, /already submitted/i);
+});
+
 
 

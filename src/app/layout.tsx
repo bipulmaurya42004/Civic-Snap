@@ -23,22 +23,25 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: "CivicSnap — Snap. Report. Track.",
-    template: "%s · CivicSnap",
+    default:
+      "CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol",
+    template: "%s · CivicSnap AI",
   },
   description:
-    "Snap. Report. Track. Turn broken roads into verified fixes across Bengaluru wards with Hinglish voice reporting, AI engineering material audits, and Official 2026 State Civic Honors.",
+    "CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol. Citizen-driven photo reporting, Hinglish voice intake, Gemini AI Confidence Score audits, and Bengaluru Civic Vanguard Citations.",
   openGraph: {
-    title: "CivicSnap — Snap. Report. Track.",
+    title:
+      "CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol",
     description:
-      "Turn broken roads into verified fixes across Bengaluru wards and compete for the 2026 Chief Minister's Annual Civic Champions Award & State Medal.",
+      "Independent citizen-driven open civic infrastructure ledger for Bengaluru with live-camera verification, AI Confidence Score repair audits, and tamper-evident SHA-256 certificates.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "CivicSnap — Snap. Report. Track.",
+    title:
+      "CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol",
     description:
-      "Sirf photo nahi, follow-up bhi. Report civic issues in 10 seconds with Hinglish voice, track verified repairs, and earn 2026 State Civic Honors.",
+      "Independent citizen-driven Bengaluru public infrastructure ledger with Hinglish voice reporting, AI Confidence Score verification, and Bengaluru Civic Vanguard Citations.",
   },
 };
 

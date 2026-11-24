@@ -742,15 +742,17 @@ export async function POST(request: NextRequest) {
       resolvedBeforePart!.base64 === resolvedAfter.part.base64;
     const isFlagged = payload.demoOutcomeHint === "flagged" || sameImage;
     const demoVerdict = isFlagged ? "Flagged" : "Verified";
+    const demoConfidence = sameImage ? 15 : isFlagged ? 42 : 94;
     const demoReason = sameImage
       ? "The uploaded after photo appears identical to the original issue photo, so the repair could not be verified."
       : isFlagged
-        ? "Demo Mode flagged this upload because visible issue remnants still appear to require follow-up work."
-        : "Demo Mode verified that the uploaded proof-of-fix image shows a repaired surface compared to the original report.";
+        ? "Preview audit flagged this upload because visible issue remnants still appear to require follow-up work."
+        : "Preview audit assessed that the uploaded proof-of-fix image shows a repaired surface compared to the original report.";
 
     return NextResponse.json({
       verdict: demoVerdict,
       verificationStatus: isFlagged ? "flagged" : "verified",
+      aiConfidenceScore: demoConfidence,
       reason: demoReason,
       demoMode: true,
       notice:
@@ -792,7 +794,7 @@ export async function POST(request: NextRequest) {
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           systemInstruction:
-            'You are an impartial civic repair verification inspector. Compare the original issue image and the repair proof image carefully. Reply strictly as JSON with verdict ("Verified" or "Flagged") and a single clear 1-sentence reason.',
+            'You are an impartial civic repair verification inspector. Compare the original issue image and the repair proof image carefully. Reply strictly as JSON with verdict ("Verified" or "Flagged"), aiConfidenceScore (integer 0-100), and a single clear 1-sentence reason.',
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -801,22 +803,35 @@ export async function POST(request: NextRequest) {
                 type: Type.STRING,
                 description: 'Must be exactly "Verified" or "Flagged".',
               },
+              aiConfidenceScore: {
+                type: Type.NUMBER,
+                description:
+                  "Calibrated AI Confidence Score from 0 to 100 (90+ only when clear, genuine repair is visible at the same site).",
+              },
               reason: {
                 type: Type.STRING,
                 description:
                   "A clear 1-sentence explanation of why the fix is Verified or Flagged.",
               },
             },
-            required: ["verdict", "reason"],
+            required: ["verdict", "aiConfidenceScore", "reason"],
           },
         },
       })
     );
 
     const rawText = extractJsonObject(response.text ?? "");
-    let parsedResult: { verdict?: string; reason?: string } = {};
+    let parsedResult: {
+      verdict?: string;
+      aiConfidenceScore?: number;
+      reason?: string;
+    } = {};
     try {
-      parsedResult = JSON.parse(rawText) as { verdict?: string; reason?: string };
+      parsedResult = JSON.parse(rawText) as {
+        verdict?: string;
+        aiConfidenceScore?: number;
+        reason?: string;
+      };
     } catch {
       parsedResult = { verdict: rawText };
     }
@@ -825,10 +840,17 @@ export async function POST(request: NextRequest) {
       parsedResult.verdict,
       parsedResult.reason
     );
+    const fallbackConfidence =
+      normalized.verificationStatus === "verified" ? 93 : 44;
+    const rawConfidence = Number(parsedResult.aiConfidenceScore);
+    const aiConfidenceScore = Number.isFinite(rawConfidence)
+      ? Math.min(100, Math.max(0, Math.round(rawConfidence)))
+      : fallbackConfidence;
 
     return NextResponse.json({
       verdict: normalized.verdict,
       verificationStatus: normalized.verificationStatus,
+      aiConfidenceScore,
       reason: normalized.reason,
       demoMode: false,
     });

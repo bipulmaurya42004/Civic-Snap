@@ -11,9 +11,9 @@ export async function generateMetadata({
   const { id } = await params;
   const decoded = decodeURIComponent(id || "").toUpperCase();
   return {
-    title: `Verify Civic Credential ${decoded}`,
+    title: `Verify Independent Civic Record ${decoded}`,
     description:
-      "Public tamper-proof verification portal for official 2026 Bengaluru Urban Governance Summit Civic Merit Certificates issued via CivicSnap AI Audit.",
+      "CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol. Public SHA-256 verification portal for Certificate of Civic Merit records issued by CivicSnap (Independent Prototype).",
   };
 }
 

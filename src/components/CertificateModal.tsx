@@ -9,17 +9,20 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Hash,
   Printer,
   ShieldCheck,
   X,
 } from "lucide-react";
 import { generateQrMatrix } from "@/lib/bengaluru-feed-data";
 import {
-  ANNUAL_CM_SUMMIT_TITLE,
   buildCertificateHtmlDocument,
   buildCertificateVerifyUrl,
   buildLinkedInAddCertificationUrl,
   buildLinkedInShareText,
+  CERTIFICATE_HEADER_TITLE,
+  CERTIFICATE_RECORD_LABEL,
+  computeCertificateSha256,
 } from "@/lib/civic-honors";
 import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
 import { useAuthModal } from "@/components/AuthModal";
@@ -60,6 +63,14 @@ export function CertificateModal({
     [certificate]
   );
 
+  const sha256Hash = useMemo(
+    () =>
+      certificate
+        ? certificate.sha256Hash || computeCertificateSha256(certificate)
+        : "",
+    [certificate]
+  );
+
   const qrMatrix = useMemo(
     () => (certificate ? generateQrMatrix(verifyUrl) : []),
     [certificate, verifyUrl]
@@ -70,14 +81,17 @@ export function CertificateModal({
     if (!user) {
       onClose();
       openAuthModal({
-        title: "Sign in to Download Official Certificate",
+        title: "Sign in to Download Civic Merit Certificate",
         message:
-          "Sign in with Google to verify your identity, track your 2026 verified reports, and download your personalized Bengaluru Urban Merit Certificate.",
+          "Sign in with Google to verify your identity, track your 2026 verified reports, and download your SHA-256 verifiable Bengaluru Civic Merit Certificate.",
         redirectTo: "/rewards",
       });
       return;
     }
-    const html = buildCertificateHtmlDocument(certificate);
+    const html = buildCertificateHtmlDocument({
+      ...certificate,
+      sha256Hash,
+    });
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -95,9 +109,9 @@ export function CertificateModal({
     if (!user) {
       onClose();
       openAuthModal({
-        title: "Sign in to Print Official Certificate",
+        title: "Sign in to Print Civic Merit Certificate",
         message:
-          "Sign in with Google to print or export your official 2026 Certificate of Civic Merit.",
+          "Sign in with Google to print or export your 2026 Certificate of Civic Merit.",
         redirectTo: "/rewards",
       });
       return;
@@ -156,7 +170,7 @@ export function CertificateModal({
                   className="text-amber-600"
                   aria-hidden="true"
                 />
-                <span>{ANNUAL_CM_SUMMIT_TITLE}</span>
+                <span>{CERTIFICATE_RECORD_LABEL}</span>
                 {showSampleBadge && (
                   <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">
                     SAMPLE PREVIEW
@@ -173,25 +187,23 @@ export function CertificateModal({
               </button>
             </div>
 
-            {/* Official Gold-Framed Certificate Canvas */}
+            {/* Gold-Framed Independent Certificate Canvas */}
             <div
               data-testid="certificate-canvas"
               className="rounded-2xl border-4 border-double border-amber-500/90 bg-gradient-to-b from-amber-50/35 via-white to-amber-50/25 p-3 sm:p-5"
             >
               <div className="rounded-xl border border-amber-300/70 bg-white px-5 py-7 text-center sm:px-10 sm:py-9">
-                {/* Official Government / Collaborative Crest Header */}
+                {/* Independent Audit Record Pill */}
                 <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50/80 px-3.5 py-1 text-[11px] font-bold tracking-wider text-blue-800 uppercase">
                   <ShieldCheck size={13} aria-hidden="true" />
-                  <span>
-                    GOVERNMENT OF KARNATAKA • {ANNUAL_CM_SUMMIT_TITLE}
-                  </span>
+                  <span>{CERTIFICATE_RECORD_LABEL} • 2026</span>
                 </div>
 
                 <h2
                   id="civic-certificate-modal-title"
-                  className="mt-5 font-[var(--font-heading)] text-2xl font-extrabold tracking-wide text-slate-900 sm:text-4xl"
+                  className="mt-5 font-[var(--font-heading)] text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl"
                 >
-                  CERTIFICATE OF CIVIC MERIT
+                  {CERTIFICATE_HEADER_TITLE}
                 </h2>
 
                 <p className="mt-1.5 text-xs font-semibold tracking-wide text-amber-700">
@@ -204,7 +216,7 @@ export function CertificateModal({
                 />
 
                 <p className="text-sm font-medium text-slate-500">
-                  This is proudly presented to
+                  This is presented to
                 </p>
 
                 <p
@@ -215,22 +227,33 @@ export function CertificateModal({
                 </p>
 
                 <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-slate-700 sm:text-[15px]">
-                  This is proudly presented to{" "}
-                  <strong className="font-semibold text-slate-900">
-                    {certificate.recipientName}
-                  </strong>{" "}
-                  in recognition of outstanding civic stewardship and verifying{" "}
+                  in recognition of citizen-led infrastructure auditing and
+                  verifying{" "}
                   <strong className="font-mono font-bold tabular-nums text-blue-700">
                     {certificate.verifiedFixes}
                   </strong>{" "}
-                  public infrastructure fixes in Bengaluru Urban (
-                  {certificate.ward}), validated through CivicSnap AI Audit in
-                  2026.
+                  civic infrastructure fixes in Bengaluru ({certificate.ward}),
+                  validated through Gemini AI Confidence Score audits on the
+                  CivicSnap Open Civic Ledger in 2026.
                 </p>
 
-                {/* Bottom Row: Hash + QR | Embossed Gold Seal | Directorate Signature */}
-                <div className="mt-8 grid items-end gap-5 border-t border-slate-200/90 pt-6 text-left sm:grid-cols-[1.35fr_auto_1fr]">
-                  {/* Left: Unique Hash ID + Dynamic Date + Scannable QR Link */}
+                {/* Cryptographic SHA-256 Hash Display */}
+                <div className="mx-auto mt-5 max-w-xl rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-left">
+                  <p className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
+                    <Hash size={11} className="text-blue-600" aria-hidden="true" />
+                    <span>Cryptographic SHA-256 Audit Digest</span>
+                  </p>
+                  <p
+                    data-testid="certificate-sha256"
+                    className="mt-1 break-all font-mono text-[11px] font-semibold text-slate-800"
+                  >
+                    {sha256Hash}
+                  </p>
+                </div>
+
+                {/* Bottom Row: ID + QR | Independent Open Audit Seal | Protocol Sign-Off */}
+                <div className="mt-7 grid items-end gap-5 border-t border-slate-200/90 pt-6 text-left sm:grid-cols-[1.35fr_auto_1fr]">
+                  {/* Left: Unique ID + Dynamic Date + Scannable QR Link */}
                   <div className="flex items-center gap-3">
                     <Link
                       href={`/verify/${encodeURIComponent(certificate.certificateId)}`}
@@ -274,7 +297,7 @@ export function CertificateModal({
                     </div>
                   </div>
 
-                  {/* Center: Gold Embossed Bengaluru Urban Governance Summit 2026 Seal */}
+                  {/* Center: Independent Open Civic Audit Seal */}
                   <div className="flex flex-col items-center justify-center">
                     <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border-4 border-double border-amber-600 bg-gradient-to-br from-amber-100 via-amber-200 to-amber-400 p-2 text-center shadow-sm">
                       <ShieldCheck
@@ -282,26 +305,26 @@ export function CertificateModal({
                         className="text-amber-900"
                         aria-hidden="true"
                       />
-                      <span className="mt-1 text-[9px] font-extrabold leading-tight tracking-wider text-amber-950 uppercase">
-                        Summit 2026
+                      <span className="mt-1 text-[8px] font-extrabold leading-tight tracking-wider text-amber-950 uppercase">
+                        Open Civic
                       </span>
                       <span className="text-[8px] font-bold tracking-wide text-amber-900 uppercase">
-                        AI Verified
+                        SHA-256 · 2026
                       </span>
                     </div>
                   </div>
 
-                  {/* Right: Digital Signature of Urban Development Directorate */}
+                  {/* Right: Independent CivicSnap Audit Protocol Sign-Off */}
                   <div className="text-left sm:text-right">
                     <p className="font-serif text-lg italic font-semibold text-blue-900">
-                      Urban Dev. Directorate
+                      CivicSnap Audit Protocol
                     </p>
                     <div className="mt-1 h-px w-full bg-slate-300" />
                     <p className="mt-1.5 text-xs font-bold text-slate-900">
-                      Urban Development Directorate
+                      {CERTIFICATE_RECORD_LABEL}
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      {ANNUAL_CM_SUMMIT_TITLE}
+                      Independent Prototype · Not a Government Agency
                     </p>
                   </div>
                 </div>

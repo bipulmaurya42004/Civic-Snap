@@ -34,6 +34,12 @@ import {
   isSafeDisplayImageUrl,
 } from "@/lib/ai-civic-helpers";
 import { detectHighPriorityZone } from "@/lib/location-helpers";
+import {
+  DUPLICATE_HASH_MAX_BIT_DISTANCE,
+  evaluateDailyLimit,
+  evaluateLocationCooldown,
+  isDuplicateImageHash,
+} from "@/lib/anti-spam";
 
 export interface CreateCivicReportInput {
   title: string;
@@ -52,6 +58,10 @@ export interface CreateCivicReportInput {
   detectedAddress?: string | null;
   highPriorityZone?: boolean | null;
   actorAlias?: string | null;
+  imageHash?: string | null;
+  needsReview?: boolean | null;
+  flagReasons?: string[] | null;
+  aiConfidenceScore?: number | null;
 }
 
 export interface StoredPrivateReport {
@@ -71,6 +81,12 @@ export interface StoredPrivateReport {
   afterImageURL?: string;
   verificationStatus?: VerificationStatus;
   verificationReason?: string;
+  aiConfidenceScore?: number;
+  imageHash?: string;
+  needsReview?: boolean;
+  flagReasons?: string[];
+  locationCooldownApplied?: boolean;
+  adminDecisionReason?: string;
   surroundingLandmarks?: string;
   materialEstimate?: string;
   socialImpactScore?: number;
@@ -145,6 +161,93 @@ export async function createCivicReport(
     throw new Error("Please select or enter a valid locality.");
   }
 
+  // Anti-spam & fraud-prevention pre-checks against user's existing reports
+  const cleanImageHash = (input.imageHash ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^0-9a-f]/g, "")
+    .slice(0, 64);
+
+  let existingMyReports: StoredPrivateReport[] = [];
+  try {
+    existingMyReports = await fetchMyReports(user.uid);
+  } catch {
+    // Allow submission if read probe is unavailable offline
+  }
+
+  // 1. Daily limit: Max 5 reports per user per day
+  const dailyCheck = evaluateDailyLimit(
+    existingMyReports.map((r) => r.createdAtIso)
+  );
+  if (!dailyCheck.allowed) {
+    throw new Error(
+      dailyCheck.error ||
+        "Daily limit reached (5 reports per day). Please try again tomorrow."
+    );
+  }
+
+  // 2. Perceptual hash duplicate check across user's reports + public approved reports
+  if (cleanImageHash.length >= 8) {
+    const duplicateOwn = existingMyReports.find(
+      (r) =>
+        r.imageHash &&
+        isDuplicateImageHash(
+          cleanImageHash,
+          r.imageHash,
+          DUPLICATE_HASH_MAX_BIT_DISTANCE
+        )
+    );
+    if (duplicateOwn) {
+      throw new Error("This image was already submitted.");
+    }
+    try {
+      const publicDocs = await fetchPublicReports();
+      const duplicatePublic = publicDocs.find(
+        (r) =>
+          r.imageHash &&
+          isDuplicateImageHash(
+            cleanImageHash,
+            r.imageHash,
+            DUPLICATE_HASH_MAX_BIT_DISTANCE
+          )
+      );
+      if (duplicatePublic) {
+        throw new Error("This image was already submitted.");
+      }
+    } catch (dupErr) {
+      if (
+        dupErr instanceof Error &&
+        dupErr.message === "This image was already submitted."
+      ) {
+        throw dupErr;
+      }
+    }
+  }
+
+  // 3. Same-location 50m / 30-day cooldown check (prevents double-earning points)
+  const cooldownCheck = evaluateLocationCooldown(
+    existingMyReports,
+    input.privateLat,
+    input.privateLng
+  );
+
+  const sanitizedFlagReasons: string[] = [];
+  if (Array.isArray(input.flagReasons)) {
+    for (const reason of input.flagReasons) {
+      const clean = String(reason || "").trim().slice(0, 180);
+      if (clean.length >= 3 && sanitizedFlagReasons.length < 8) {
+        sanitizedFlagReasons.push(clean);
+      }
+    }
+  }
+  if (cooldownCheck.onCooldown && cooldownCheck.reason) {
+    sanitizedFlagReasons.push(cooldownCheck.reason.slice(0, 180));
+  }
+  const needsReview =
+    Boolean(input.needsReview) ||
+    cooldownCheck.onCooldown ||
+    sanitizedFlagReasons.length > 0;
+
   const reportId = generateSafeId("CS");
   const eventId = generateSafeId("EVT");
   const actorLabel = sanitizeDisplayAlias(
@@ -171,9 +274,18 @@ export async function createCivicReport(
     publicApproved: false,
     hasPhoto: Boolean(input.hasPhoto),
     pointsAwarded: 0,
+    needsReview,
+    locationCooldownApplied: cooldownCheck.onCooldown,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
+
+  if (cleanImageHash.length >= 8) {
+    reportPayload.imageHash = cleanImageHash;
+  }
+  if (sanitizedFlagReasons.length > 0) {
+    reportPayload.flagReasons = sanitizedFlagReasons;
+  }
 
   if (safePhotoPath) {
     reportPayload.photoStoragePath = safePhotoPath;
@@ -352,6 +464,16 @@ export async function createCivicReport(
         typeof reportPayload.highPriorityZone === "boolean"
           ? reportPayload.highPriorityZone
           : undefined,
+      imageHash:
+        typeof reportPayload.imageHash === "string"
+          ? reportPayload.imageHash
+          : undefined,
+      needsReview: Boolean(reportPayload.needsReview),
+      flagReasons:
+        Array.isArray(reportPayload.flagReasons)
+          ? (reportPayload.flagReasons as string[])
+          : undefined,
+      locationCooldownApplied: Boolean(reportPayload.locationCooldownApplied),
       createdAtIso: nowIso,
       updatedAtIso: nowIso,
     };
@@ -414,6 +536,26 @@ export async function fetchMyReports(
         verificationReason:
           typeof data.verificationReason === "string"
             ? data.verificationReason
+            : undefined,
+        aiConfidenceScore:
+          typeof data.aiConfidenceScore === "number" &&
+          Number.isFinite(data.aiConfidenceScore)
+            ? Math.round(data.aiConfidenceScore)
+            : undefined,
+        imageHash:
+          typeof data.imageHash === "string" ? data.imageHash : undefined,
+        needsReview:
+          typeof data.needsReview === "boolean" ? data.needsReview : undefined,
+        flagReasons: Array.isArray(data.flagReasons)
+          ? data.flagReasons.map((r) => String(r))
+          : undefined,
+        locationCooldownApplied:
+          typeof data.locationCooldownApplied === "boolean"
+            ? data.locationCooldownApplied
+            : undefined,
+        adminDecisionReason:
+          typeof data.adminDecisionReason === "string"
+            ? data.adminDecisionReason
             : undefined,
         surroundingLandmarks:
           typeof data.surroundingLandmarks === "string"
@@ -510,7 +652,7 @@ function mapPublicReportDoc(
       label: "AI Fix Verified · Marked Resolved",
       note:
         verificationReason ||
-        "Gemini Vision verified the repair proof photo and marked this issue resolved (+25 CivicPoints).",
+        "Gemini Vision verified the repair proof photo (AI Confidence Score ≥ 90%) and admin marked this issue resolved (+50 CivicPoints).",
       createdAt: updatedAt,
       actorLabel: "Gemini Vision + CivicSnap Project Admin",
     });
@@ -557,6 +699,12 @@ function mapPublicReportDoc(
     afterImageURL,
     verificationStatus,
     verificationReason,
+    aiConfidenceScore:
+      typeof data.aiConfidenceScore === "number" &&
+      Number.isFinite(data.aiConfidenceScore)
+        ? Math.round(data.aiConfidenceScore)
+        : undefined,
+    imageHash: typeof data.imageHash === "string" ? data.imageHash : undefined,
     surroundingLandmarks:
       typeof data.surroundingLandmarks === "string"
         ? data.surroundingLandmarks
@@ -727,6 +875,26 @@ export async function fetchAllReportsForAdmin(): Promise<
           typeof data.verificationReason === "string"
             ? data.verificationReason
             : undefined,
+        aiConfidenceScore:
+          typeof data.aiConfidenceScore === "number" &&
+          Number.isFinite(data.aiConfidenceScore)
+            ? Math.round(data.aiConfidenceScore)
+            : undefined,
+        imageHash:
+          typeof data.imageHash === "string" ? data.imageHash : undefined,
+        needsReview:
+          typeof data.needsReview === "boolean" ? data.needsReview : undefined,
+        flagReasons: Array.isArray(data.flagReasons)
+          ? data.flagReasons.map((r) => String(r))
+          : undefined,
+        locationCooldownApplied:
+          typeof data.locationCooldownApplied === "boolean"
+            ? data.locationCooldownApplied
+            : undefined,
+        adminDecisionReason:
+          typeof data.adminDecisionReason === "string"
+            ? data.adminDecisionReason
+            : undefined,
         surroundingLandmarks:
           typeof data.surroundingLandmarks === "string"
             ? data.surroundingLandmarks
@@ -763,7 +931,20 @@ export async function fetchAllReportsForAdmin(): Promise<
         pointsAwarded:
           typeof data.pointsAwarded === "number"
             ? toSafeInt(data.pointsAwarded)
-            : computeReportCivicPoints(status, reviewState),
+            : computeReportCivicPoints(status, reviewState, undefined, {
+                verificationStatus:
+                  typeof data.verificationStatus === "string"
+                    ? data.verificationStatus
+                    : undefined,
+                aiConfidenceScore:
+                  typeof data.aiConfidenceScore === "number"
+                    ? data.aiConfidenceScore
+                    : undefined,
+                locationCooldownApplied:
+                  typeof data.locationCooldownApplied === "boolean"
+                    ? data.locationCooldownApplied
+                    : undefined,
+              }),
         createdAtIso: timestampToIso(data.createdAt),
         updatedAtIso: timestampToIso(data.updatedAt),
       };
@@ -779,8 +960,9 @@ export async function fetchAllReportsForAdmin(): Promise<
 
 /**
  * Admin moderation action: updates report status/reviewState, credits CivicPoints
- * (+10 Accepted, +25 Resolved) atomically to `users/{uid}` and `public_profiles/{uid}`,
- * records an immutable audit event, and updates `public_reports/{id}`.
+ * (+50 strictly on Verified + Resolved + AI Confidence Score >= 90% + Admin Approval)
+ * atomically to `users/{uid}` and `public_profiles/{uid}`, records an immutable
+ * audit event, and updates `public_reports/{id}`.
  */
 export async function moderateReportAsAdmin(
   adminUser: User,
@@ -795,6 +977,9 @@ export async function moderateReportAsAdmin(
     afterImageURL?: string | null;
     verificationStatus?: VerificationStatus;
     verificationReason?: string | null;
+    aiConfidenceScore?: number | null;
+    needsReview?: boolean;
+    adminDecisionReason?: string | null;
   }
 ): Promise<{ pointsAwarded: number; pointsDelta: number }> {
   if (!db) {
@@ -806,12 +991,32 @@ export async function moderateReportAsAdmin(
     throw new Error("Please include a short review note (at least 2 characters).");
   }
 
+  const effectiveVerificationStatus =
+    input.verificationStatus ?? report.verificationStatus;
+  const effectiveAiConfidence =
+    typeof input.aiConfidenceScore === "number" &&
+    Number.isFinite(input.aiConfidenceScore)
+      ? Math.max(0, Math.min(100, Math.round(input.aiConfidenceScore)))
+      : report.aiConfidenceScore;
+
   const prevPoints = toSafeInt(report.pointsAwarded);
-  const nextPoints = computeReportCivicPoints(input.status, input.reviewState);
+  const pointOptions = {
+    verificationStatus: effectiveVerificationStatus ?? (input.status === "resolved" ? "verified" : "unverified"),
+    aiConfidenceScore: effectiveAiConfidence,
+    locationCooldownApplied: report.locationCooldownApplied,
+  };
+  const nextPoints = computeReportCivicPoints(
+    input.status,
+    input.reviewState,
+    report.duplicateOfId,
+    pointOptions
+  );
   const pointsDelta = computeCivicPointsDelta(
     prevPoints,
     input.status,
-    input.reviewState
+    input.reviewState,
+    report.duplicateOfId,
+    pointOptions
   );
 
   const wasAccepted = report.reviewState === "accepted";
@@ -830,8 +1035,6 @@ export async function moderateReportAsAdmin(
     input.afterImageURL && isSafeDisplayImageUrl(input.afterImageURL)
       ? input.afterImageURL.trim().slice(0, 2048)
       : report.afterImageURL;
-  const effectiveVerificationStatus =
-    input.verificationStatus ?? report.verificationStatus;
   const effectiveVerificationReason =
     input.verificationReason && input.verificationReason.trim().length >= 3
       ? input.verificationReason.trim().slice(0, 400)
@@ -862,6 +1065,8 @@ export async function moderateReportAsAdmin(
       reviewState: input.reviewState,
       publicApproved: input.publicApproved,
       pointsAwarded: nextPoints,
+      needsReview:
+        typeof input.needsReview === "boolean" ? input.needsReview : false,
       updatedAt: now,
     };
 
@@ -876,6 +1081,14 @@ export async function moderateReportAsAdmin(
     }
     if (effectiveVerificationReason) {
       reportUpdate.verificationReason = effectiveVerificationReason;
+    }
+    if (typeof effectiveAiConfidence === "number") {
+      reportUpdate.aiConfidenceScore = effectiveAiConfidence;
+    }
+    if (input.adminDecisionReason && input.adminDecisionReason.trim().length >= 2) {
+      reportUpdate.adminDecisionReason = input.adminDecisionReason
+        .trim()
+        .slice(0, 300);
     }
 
     batch.update(doc(db, "reports", report.id), reportUpdate);
@@ -916,8 +1129,11 @@ export async function moderateReportAsAdmin(
 
       batch.update(userDocRef, {
         civicPoints: nextUserPoints,
+        points: nextUserPoints,
         acceptedReportsCount: nextAcceptedCount,
+        reportsCount: nextAcceptedCount,
         resolvedReportsCount: nextResolvedCount,
+        resolvedCount: nextResolvedCount,
         updatedAt: now,
       });
 
@@ -961,6 +1177,12 @@ export async function moderateReportAsAdmin(
       }
       if (effectiveVerificationReason) {
         publicPayload.verificationReason = effectiveVerificationReason;
+      }
+      if (typeof effectiveAiConfidence === "number") {
+        publicPayload.aiConfidenceScore = effectiveAiConfidence;
+      }
+      if (report.imageHash && report.imageHash.length >= 8) {
+        publicPayload.imageHash = report.imageHash.slice(0, 64);
       }
       if (
         report.surroundingLandmarks &&

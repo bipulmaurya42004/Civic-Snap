@@ -56,7 +56,7 @@ const PRIMARY_NAV_ITEMS = [
 
 const DRAWER_OVERVIEW_ITEMS = [
   { label: "Home", href: "/", icon: Home },
-  { label: "CM Annual Honors", href: "/#cm-honors", icon: Landmark },
+  { label: "Civic Vanguard 2026", href: "/#vanguard-honors", icon: Landmark },
   { label: "Merit Certificates", href: "/#certificates", icon: FileCheck2 },
   { label: "How It Works", href: "/#how-it-works", icon: Sparkles },
   { label: "FAQ & Help", href: "/#faq", icon: HelpCircle },
@@ -83,7 +83,7 @@ export function SiteHeader() {
       openAuthModal({
         title: "Sign In to Report a Civic Issue",
         message:
-          "Sign in with Google to submit AI-audited road, streetlight, or waste reports and earn +50 Merit Points toward the 2026 Chief Minister's Civic Honors.",
+          "Sign in with Google to submit live-camera civic reports. +50 Merit Points are awarded strictly after AI Confidence Score ≥ 90% and admin approval.",
         redirectTo: "/report",
       });
     } else {
@@ -389,20 +389,20 @@ export function SiteHeader() {
 
                 <div className="border-t border-slate-100" />
 
-                {/* Section 3: State Honors Details */}
+                {/* Section 3: Civic Vanguard Honors Details */}
                 <section
-                  aria-label="State Civic Honors details"
+                  aria-label="Civic Vanguard Honors details"
                   className="rounded-2xl border border-amber-200/90 bg-amber-50/50 p-3.5"
                 >
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
                     <Landmark size={15} className="text-amber-700" aria-hidden="true" />
-                    <span>State Civic Honors 2026</span>
+                    <span>Bengaluru Civic Vanguard 2026</span>
                   </div>
                   <p className="mt-1.5 text-xs leading-5 text-slate-700">
-                    Top 5 Bengaluru citizens are felicitated by the Hon&apos;ble
-                    Chief Minister at the Annual Urban Governance Summit. Every
-                    5 verified fixes automatically issue an official Digital
-                    Civic Merit Certificate.
+                    Top 5 independent citizen auditors are shortlisted for the
+                    Bengaluru Civic Vanguard Citation by an independent review
+                    panel. Every 5 verified fixes unlock a SHA-256 verifiable
+                    Digital Civic Merit Certificate.
                   </p>
                   <Link
                     href="/rewards"

@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   Clock,
   Crown,
-  Landmark,
   MapPin,
   Medal,
   Search,
@@ -155,9 +154,9 @@ export function WardWarsClient() {
   const handleEarnPointsClick = () => {
     if (!user) {
       openAuthModal({
-        title: "Sign In to Enter the 2026 CM Race",
+        title: "Sign In to Join 2026 Vanguard Standings",
         message:
-          "Sign in with Google to submit AI-verified reports and earn +50 Merit Points toward the Top 5 Chief Minister's Civic Champions Podium.",
+          "Sign in with Google to file live-camera reports and earn +50 Merit Points strictly on verified fixes (AI Confidence Score ≥ 90% + Admin approval).",
         redirectTo: "/report",
       });
       return;
@@ -167,44 +166,63 @@ export function WardWarsClient() {
 
   return (
     <PageTransition className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-      {/* Top Prestige Banner — The 2026 Chief Minister's Civic Champions Race */}
+      {/* Top Banner — 2026 Bengaluru Civic Vanguard Standings */}
       <section
-        aria-label="2026 Chief Minister Civic Champions Race Banner"
+        aria-label="2026 Bengaluru Civic Vanguard Standings Banner"
         className="mb-8 rounded-2xl border border-amber-300/90 bg-gradient-to-r from-amber-50/85 via-white to-blue-50/75 p-5 shadow-sm sm:p-7"
       >
         <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-xs font-bold text-amber-900">
-                <Landmark size={13} aria-hidden="true" />
+                <Award size={13} aria-hidden="true" />
                 <span>{ANNUAL_CM_SUMMIT_TITLE}</span>
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">
                 <Timer size={13} aria-hidden="true" />
                 <span>
-                  {ANNUAL_CM_SEASON_YEAR} Annual Season Closes:{" "}
-                  {ANNUAL_CM_SEASON_CLOSE_LABEL} • Final Weeks to Qualify!
+                  {ANNUAL_CM_SEASON_YEAR} Annual Cycle Closes:{" "}
+                  {ANNUAL_CM_SEASON_CLOSE_LABEL}
                 </span>
               </span>
             </div>
 
             <h1 className="mt-3 font-[var(--font-heading)] text-2xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              The 2026 Chief Minister&apos;s Civic Champions Race
+              2026 Bengaluru Civic Vanguard Standings
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
               Track Bengaluru Ward Standings across Indiranagar, HSR Layout, and
-              Koramangala — or inspect{" "}
+              Koramangala — or inspect the{" "}
               <strong className="font-semibold text-slate-900">
-                Citizen Stars (Annual CM Race)
+                2026 Vanguard Hall of Fame
               </strong>{" "}
-              where Ranks #1–#5 earn personal felicitation by the Hon&apos;ble
-              Chief Minister, an Official State Civic Medal, and a 1-Year{" "}
+              where Ranks #1–#5 qualify for the{" "}
               <strong className="font-semibold text-amber-900">
-                Honorary Civic Warden
+                Bengaluru Civic Vanguard Citation
               </strong>{" "}
-              nomination.
+              and planned CivicTech Community Micro-Grant (aspirational, not
+              funded in this prototype).
             </p>
+
+            {/* Independent Panel Review Note */}
+            <div
+              data-testid="panel-review-notice"
+              className="mt-3.5 flex items-start gap-2 rounded-xl border border-blue-200/80 bg-blue-50/70 px-3.5 py-2.5 text-xs leading-5 text-blue-950"
+            >
+              <ShieldCheck
+                size={15}
+                className="mt-0.5 shrink-0 text-blue-600"
+                aria-hidden="true"
+              />
+              <span>
+                <strong>Independent Panel Review:</strong> All Bengaluru Civic
+                Vanguard shortlist winners are audited and reviewed by an
+                independent community review panel. Only verified repairs (AI
+                Confidence Score ≥ 90% + Admin approval) count toward annual
+                standings.
+              </span>
+            </div>
 
             {/* Live Countdown to 31st December 2026 */}
             <div
@@ -257,13 +275,13 @@ export function WardWarsClient() {
               className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
             >
               <Camera size={16} aria-hidden="true" />
-              <span>Earn +50 Merit Pts</span>
+              <span>Report &amp; Earn +50 Pts</span>
             </button>
           </div>
         </div>
       </section>
 
-      {/* Distinct Two-Tab Switcher: Ward Standings vs Citizen Stars (Annual CM Race) */}
+      {/* Two-Tab Switcher: Ward Standings vs 2026 Vanguard Hall of Fame */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-2.5 shadow-sm">
         <div
           role="tablist"
@@ -315,11 +333,9 @@ export function WardWarsClient() {
               className="relative z-10 text-amber-600"
               aria-hidden="true"
             />
-            <span className="relative z-10">
-              Citizen Stars (Annual CM Race)
-            </span>
+            <span className="relative z-10">2026 Vanguard Hall of Fame</span>
             <span className="relative z-10 rounded-full bg-amber-100 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-800">
-              2026 Top 5
+              Top 5 Shortlist
             </span>
           </button>
         </div>
@@ -327,7 +343,7 @@ export function WardWarsClient() {
         <p className="px-2 text-xs text-slate-500">
           {activeTab === "wards"
             ? "Indiranagar vs HSR Layout vs Koramangala · Live 2026 resolution rate & speed"
-            : "Ranks #1–#5 earn CM Contender status & Honorary Civic Warden nomination"}
+            : "Ranks #1–#5 enter the Bengaluru Civic Vanguard Citation shortlist (independent panel reviewed)"}
         </p>
       </div>
 
@@ -558,15 +574,15 @@ export function WardWarsClient() {
           <motion.div
             key="citizen-stars-panel"
             role="tabpanel"
-            aria-label="Citizen Stars Annual CM Race"
+            aria-label="2026 Vanguard Hall of Fame"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25 }}
           >
-            {/* Top 3 CM Contenders Podium */}
+            {/* Top 3 Vanguard Contenders Podium */}
             <section
-              aria-label="Top three CM Civic Champions Contenders"
+              aria-label="Top three Bengaluru Civic Vanguard Contenders"
               className="mt-7"
             >
               <div className="grid gap-5 md:grid-cols-3">
@@ -584,11 +600,11 @@ export function WardWarsClient() {
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-xs font-bold text-amber-900">
                           <Crown size={13} aria-hidden="true" />
-                          <span>#{star.rank} CM Contender</span>
+                          <span>#{star.rank} Vanguard Shortlist</span>
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
                           <ShieldCheck size={11} aria-hidden="true" />
-                          <span>Honorary Civic Warden Nominee</span>
+                          <span>Panel Reviewed</span>
                         </span>
                       </div>
 
@@ -643,9 +659,9 @@ export function WardWarsClient() {
               </div>
             </section>
 
-            {/* Top 10 Personal Citizen Stars Table (Top 5 Highlighted with Glowing Gold Borders, CM Contender & Honorary Civic Warden Nominee tags) */}
+            {/* Top 10 Personal Citizen Stars Table */}
             <section
-              aria-label="Citizen Stars Annual CM Race table"
+              aria-label="2026 Vanguard Hall of Fame table"
               className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm"
             >
               <div className="flex flex-col justify-between gap-3 border-b border-slate-200/80 p-4 sm:flex-row sm:items-center sm:p-5">
@@ -653,13 +669,13 @@ export function WardWarsClient() {
                   <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
                     <Users size={16} className="text-blue-600" aria-hidden="true" />
                     <span>
-                      Citizen Stars (Annual CM Race) — Top 10 Bengaluru Stewards
+                      2026 Vanguard Hall of Fame — Top 10 Bengaluru Auditors
                     </span>
                   </h2>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Highlighted Ranks #1–#5 currently qualify for felicitation by
-                    the Hon&apos;ble Chief Minister and 1-Year Honorary Civic
-                    Warden appointment on {ANNUAL_CM_SEASON_CLOSE_LABEL}.
+                    Highlighted Ranks #1–#5 are shortlisted for the Bengaluru
+                    Civic Vanguard Citation after independent community review
+                    panel audit on {ANNUAL_CM_SEASON_CLOSE_LABEL}.
                   </p>
                 </div>
 
@@ -686,7 +702,7 @@ export function WardWarsClient() {
                     <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold text-slate-600">
                       <th className="px-5 py-3.5">Rank</th>
                       <th className="px-5 py-3.5">Citizen &amp; Ward</th>
-                      <th className="px-5 py-3.5">2026 Honors Status</th>
+                      <th className="px-5 py-3.5">2026 Vanguard Status</th>
                       <th className="px-5 py-3.5 text-right">Verified Fixes</th>
                       <th className="px-5 py-3.5 text-right">Total Points</th>
                     </tr>
@@ -699,7 +715,7 @@ export function WardWarsClient() {
                           key={entry.alias}
                           data-testid={
                             isTop5
-                              ? `cm-contender-row-${entry.rank}`
+                              ? `vanguard-shortlist-row-${entry.rank}`
                               : `citizen-row-${entry.rank}`
                           }
                           className={
@@ -747,11 +763,11 @@ export function WardWarsClient() {
                                 <>
                                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 shadow-xs">
                                     <Crown size={12} aria-hidden="true" />
-                                    <span>CM Contender</span>
+                                    <span>Civic Vanguard Laureate</span>
                                   </span>
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-800">
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
                                     <ShieldCheck size={11} aria-hidden="true" />
-                                    <span>Honorary Civic Warden Nominee</span>
+                                    <span>Independent Panel Shortlist</span>
                                   </span>
                                 </>
                               ) : (

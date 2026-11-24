@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type DragEvent,
 } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
@@ -29,7 +28,6 @@ import {
   Sparkles,
   Square,
   Trash2,
-  Upload,
   Wrench,
   X,
 } from "lucide-react";
@@ -61,6 +59,13 @@ import {
   uploadCivicPhotoToStorage,
 } from "@/lib/client-image-utils";
 import { syncUserProfileOnSignIn } from "@/lib/firebase-users";
+import {
+  computePerceptualImageHash,
+  evaluateExifFraudFlags,
+  extractExifPrivately,
+  isDuplicateImageHash,
+  stripExifAndOptimizeImage,
+} from "@/lib/anti-spam";
 import { PageTransition } from "@/components/ui/MotionPrimitives";
 import { SafeCivicImage } from "@/components/ui/SafeCivicImage";
 
@@ -135,6 +140,7 @@ interface SubmittedSummary {
   highPriority: boolean;
   persistedToFirestore: boolean;
   pointsEarned: number;
+  needsReview: boolean;
   urgencyScore: number;
   materialEstimate: string;
 }
@@ -143,12 +149,11 @@ export function ReportComposerClient() {
   const { user, displayAlias, signInWithGoogle, busy: authBusy } =
     useFirebaseAuth();
 
-  // Photo & Live Web Camera state
+  // Photo & Live Web Camera state (Live Camera Only; EXIF read privately & stripped before storage)
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [isSamplePhoto, setIsSamplePhoto] = useState(false);
   const [compressedKb, setCompressedKb] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
@@ -156,6 +161,18 @@ export function ReportComposerClient() {
   const [facingMode, setFacingMode] = useState<"environment" | "user">(
     "environment"
   );
+  // Anti-spam verification state (EXIF values stay internal, never rendered publicly)
+  const [imageHash, setImageHash] = useState<string | null>(null);
+  const [needsReviewFlag, setNeedsReviewFlag] = useState(false);
+  const [internalFlagReasons, setInternalFlagReasons] = useState<string[]>([]);
+  const [duplicateImageDetected, setDuplicateImageDetected] = useState(false);
+  const [exifStrippedReady, setExifStrippedReady] = useState(false);
+  const internalExifRef = useRef<{
+    exifLat: number | null;
+    exifLng: number | null;
+    exifTimestampMs: number | null;
+  }>({ exifLat: null, exifLng: null, exifTimestampMs: null });
+  const submittedHashesSessionRef = useRef<string[]>([]);
 
   // Details state
   const [category, setCategory] = useState<IssueCategory>("pothole");
@@ -218,7 +235,6 @@ export function ReportComposerClient() {
   const latestTranscriptRef = useRef("");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mobileCameraInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -261,6 +277,27 @@ export function ReportComposerClient() {
       }
     };
   }, [photoPreviewUrl]);
+
+  // Re-run internal EXIF GPS drift check whenever reported GPS updates (never shows raw EXIF publicly)
+  useEffect(() => {
+    const exif = internalExifRef.current;
+    if (
+      exif.exifLat === null &&
+      exif.exifLng === null &&
+      exif.exifTimestampMs === null
+    ) {
+      return;
+    }
+    const evalResult = evaluateExifFraudFlags({
+      exifLat: exif.exifLat,
+      exifLng: exif.exifLng,
+      exifTimestampMs: exif.exifTimestampMs,
+      reportedLat: gpsCoords?.lat ?? null,
+      reportedLng: gpsCoords?.lng ?? null,
+    });
+    setNeedsReviewFlag(evalResult.needsReview);
+    setInternalFlagReasons(evalResult.reasons);
+  }, [gpsCoords?.lat, gpsCoords?.lng]);
 
   const effectiveLocality =
     selectedWardOption === MANUAL_WARD_OPTION
@@ -393,24 +430,67 @@ export function ReportComposerClient() {
     setEngineeringInsights(null);
     setAuditNotice(null);
     setIsSamplePhoto(false);
-    setPhotoFile(file);
-    try {
-      setPhotoPreviewUrl(URL.createObjectURL(file));
-    } catch {
-      setPhotoPreviewUrl(null);
+    setDuplicateImageDetected(false);
+    setNeedsReviewFlag(false);
+    setInternalFlagReasons([]);
+    setExifStrippedReady(false);
+    setImageHash(null);
+
+    // 1. Privately read EXIF metadata BEFORE stripping (never displayed publicly)
+    const rawExif = await extractExifPrivately(file);
+    internalExifRef.current = rawExif;
+    const exifCheck = evaluateExifFraudFlags({
+      exifLat: rawExif.exifLat,
+      exifLng: rawExif.exifLng,
+      exifTimestampMs: rawExif.exifTimestampMs,
+      reportedLat: gpsCoords?.lat ?? null,
+      reportedLng: gpsCoords?.lng ?? null,
+    });
+    if (exifCheck.needsReview) {
+      setNeedsReviewFlag(true);
+      setInternalFlagReasons(exifCheck.reasons);
     }
 
-    // Calculate compressed size indicator (<100KB target)
+    // 2. Compute client-side 64-bit perceptual hash for duplicate detection
+    let computedHash = "";
     try {
-      const compact = await fileToCompactBase64(file, 960);
-      const approxBytes = Math.round((compact.base64.length * 3) / 4);
-      setCompressedKb(Math.max(18, Math.min(96, Math.round(approxBytes / 1024))));
+      computedHash = await computePerceptualImageHash(file);
+      if (computedHash) {
+        setImageHash(computedHash);
+        const dupInSession = submittedHashesSessionRef.current.some((prev) =>
+          isDuplicateImageHash(computedHash, prev)
+        );
+        if (dupInSession) {
+          setDuplicateImageDetected(true);
+          setPhotoError("This image was already submitted.");
+          return;
+        }
+      }
     } catch {
-      setCompressedKb(Math.min(94, Math.max(24, Math.round(file.size / 1024))));
+      // Continue cleanly if perceptual hash cannot decode
     }
 
-    // Automatically inspect every uploaded/captured photo with CivicSnap AI so fake photos are caught immediately
-    void runPhotoAuditInternal(file, false);
+    // 3. Strip ALL EXIF metadata & compress under 200KB via clean canvas re-encode
+    let cleanFileToStore = file;
+    try {
+      const stripped = await stripExifAndOptimizeImage(file);
+      cleanFileToStore = stripped.cleanFile;
+      setCompressedKb(Math.max(12, Math.round(stripped.finalBytes / 1024)));
+      setExifStrippedReady(true);
+      setPhotoPreviewUrl(stripped.previewDataUrl || URL.createObjectURL(cleanFileToStore));
+    } catch {
+      setCompressedKb(Math.min(190, Math.max(24, Math.round(file.size / 1024))));
+      try {
+        setPhotoPreviewUrl(URL.createObjectURL(file));
+      } catch {
+        setPhotoPreviewUrl(null);
+      }
+    }
+
+    setPhotoFile(cleanFileToStore);
+
+    // 4. Automatically inspect captured photo with CivicSnap AI
+    void runPhotoAuditInternal(cleanFileToStore, false);
   };
 
   const stopCameraStream = () => {
@@ -438,7 +518,7 @@ export function ReportComposerClient() {
       typeof navigator.mediaDevices.getUserMedia !== "function"
     ) {
       setCameraError(
-        "Live browser camera is unavailable on this device/context. Tap Phone Camera or Browse / Gallery to upload your photo."
+        "Live browser camera is unavailable on this device. Tap 'Capture with Rear Camera' to take a live photo."
       );
       return;
     }
@@ -468,7 +548,7 @@ export function ReportComposerClient() {
       setCameraOpen(true);
     } catch {
       setCameraError(
-        "Camera permission was blocked or no webcam was found. Allow camera access or use Phone Camera / Gallery upload."
+        "Camera permission was blocked or no camera was detected. Allow camera access or tap 'Capture with Rear Camera'."
       );
     } finally {
       setCameraStarting(false);
@@ -524,28 +604,28 @@ export function ReportComposerClient() {
     void processSelectedFile(file);
   };
 
-  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) {
-      stopCameraStream();
-      void processSelectedFile(file);
-    }
-  };
-
   const handleLoadSamplePhoto = () => {
     if (photoPreviewUrl && photoPreviewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(photoPreviewUrl);
     }
     setPhotoError(null);
     setPhotoRejectionReason(null);
+    setDuplicateImageDetected(false);
+    setNeedsReviewFlag(false);
+    setInternalFlagReasons([]);
+    internalExifRef.current = {
+      exifLat: null,
+      exifLng: null,
+      exifTimestampMs: null,
+    };
     setDetectedPhotoSubject("Waterlogged road pothole along 100ft Road");
     setPhotoAuditStatus("verified");
     setPhotoFile(null);
     setIsSamplePhoto(true);
     setPhotoPreviewUrl("/demo/pothole.jpg");
     setCompressedKb(74);
+    setExifStrippedReady(true);
+    setImageHash("3c3c7e7e7e3c1800");
     setCategory("pothole");
     if (!title.trim()) {
       setTitle(
@@ -566,7 +646,7 @@ export function ReportComposerClient() {
         "₹42,000+ est. 30-day two-wheeler suspension & emergency delay impact",
     });
     setAuditNotice(
-      "Sample verified road pothole loaded & auto-compressed to 74 KB with CivicSnap AI Engineering Insights."
+      "Sample verified road pothole loaded & optimized to 74 KB (EXIF stripped) with CivicSnap AI Engineering Insights."
     );
   };
 
@@ -586,6 +666,16 @@ export function ReportComposerClient() {
     setPhotoError(null);
     setCameraError(null);
     setAuditNotice(null);
+    setImageHash(null);
+    setNeedsReviewFlag(false);
+    setInternalFlagReasons([]);
+    setDuplicateImageDetected(false);
+    setExifStrippedReady(false);
+    internalExifRef.current = {
+      exifLat: null,
+      exifLng: null,
+      exifTimestampMs: null,
+    };
   };
 
   const handleRunPhotoAudit = async () => {
@@ -937,17 +1027,21 @@ export function ReportComposerClient() {
   const handleSubmit = async () => {
     setFormError(null);
 
-    // 1. Block fake/irrelevant/non-civic photos strictly
+    // 1. Block duplicate images & fake/irrelevant/non-civic photos strictly
+    if (duplicateImageDetected) {
+      setFormError("This image was already submitted.");
+      return;
+    }
     if (photoAuditStatus === "checking" || analyzingPhoto) {
       setFormError(
-        "CivicSnap AI is still inspecting your uploaded photo. Please wait a second."
+        "CivicSnap AI is still inspecting your captured photo. Please wait a second."
       );
       return;
     }
     if (photoAuditStatus === "rejected") {
       setFormError(
         photoRejectionReason ||
-          "Your uploaded photo was rejected by CivicSnap AI as a non-civic image. Remove it and upload a genuine outdoor civic issue photo."
+          "Your captured photo was rejected by CivicSnap AI as a non-civic image. Please capture the issue live with your camera."
       );
       return;
     }
@@ -1066,7 +1160,14 @@ export function ReportComposerClient() {
           detectedAddress: detectedAddress ?? null,
           highPriorityZone: priorityZoneCheck.isHighPriority,
           actorAlias: displayAlias,
+          imageHash: imageHash ?? null,
+          needsReview: needsReviewFlag,
+          flagReasons: internalFlagReasons,
         });
+
+        if (imageHash) {
+          submittedHashesSessionRef.current.push(imageHash);
+        }
 
         setSubmitted({
           id: created.id,
@@ -1076,7 +1177,8 @@ export function ReportComposerClient() {
           address: detectedAddress,
           highPriority: priorityZoneCheck.isHighPriority,
           persistedToFirestore: true,
-          pointsEarned: 50,
+          pointsEarned: 0,
+          needsReview: Boolean(created.needsReview),
           urgencyScore: finalScore,
           materialEstimate: finalMaterialEstimate,
         });
@@ -1084,6 +1186,19 @@ export function ReportComposerClient() {
       }
 
       // Interactive Preview Mode submission when guest has not signed in yet
+      if (imageHash) {
+        if (
+          submittedHashesSessionRef.current.some((prev) =>
+            isDuplicateImageHash(imageHash, prev)
+          )
+        ) {
+          setDuplicateImageDetected(true);
+          setFormError("This image was already submitted.");
+          return;
+        }
+        submittedHashesSessionRef.current.push(imageHash);
+      }
+
       const previewId = `CS-BLR-${Math.floor(400 + Math.random() * 550)}`;
       setSubmitted({
         id: previewId,
@@ -1093,11 +1208,18 @@ export function ReportComposerClient() {
         address: detectedAddress,
         highPriority: priorityZoneCheck.isHighPriority,
         persistedToFirestore: false,
-        pointsEarned: 50,
+        pointsEarned: 0,
+        needsReview: needsReviewFlag,
         urgencyScore: finalScore,
         materialEstimate: finalMaterialEstimate,
       });
     } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message === "This image was already submitted."
+      ) {
+        setDuplicateImageDetected(true);
+      }
       const parsed = parseFirestoreSubmitError(
         err,
         Boolean(user?.emailVerified)
@@ -1134,18 +1256,25 @@ export function ReportComposerClient() {
             <CheckCircle2 size={24} aria-hidden="true" />
           </div>
           <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-              {submitted.persistedToFirestore
-                ? "Verified & Saved to CivicSnap Cloud"
-                : "Verified Preview Report Logged"}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                {submitted.persistedToFirestore
+                  ? "Saved to CivicSnap Ledger"
+                  : "Preview Report Logged"}
+              </span>
+              {submitted.needsReview && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                  Needs Review
+                </span>
+              )}
+            </div>
             <h2 className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900">
-              Issue {submitted.id} logged · +{submitted.pointsEarned} CivicPoints
+              Issue {submitted.id} logged · 0 pts on submission
             </h2>
             <p className="mt-1.5 text-sm leading-6 text-slate-600">
               {submitted.persistedToFirestore
-                ? "Your report passed CivicSnap AI authenticity verification and is stored securely for municipal review."
-                : "Your report passed CivicSnap AI authenticity & GPS checks. Sign in with Google to save future reports to your live CivicSnap profile."}
+                ? "EXIF metadata was stripped before storage. +50 CivicPoints are awarded strictly once the repair achieves an AI Confidence Score ≥ 90% and Admin approval."
+                : "Your live report passed anti-spam & EXIF-strip checks. Sign in with Google to persist reports — +50 CivicPoints are awarded strictly after Verified Fix + Admin approval."}
             </p>
           </div>
         </div>
@@ -1260,34 +1389,33 @@ export function ReportComposerClient() {
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Left Column: Photo + GPS + Ward */}
         <div className="space-y-6 lg:col-span-5">
-          {/* 1. Photo Upload Card with <100KB Auto-Compress Indicator */}
+          {/* 1. Live Camera Only Evidence Card with EXIF Strip + <200KB Optimization */}
           <section className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Camera size={17} className="text-blue-600" aria-hidden="true" />
                 <h2 className="font-[var(--font-heading)] text-base font-bold text-slate-900">
-                  1. Evidence Photo
+                  1. Live Camera Evidence
                 </h2>
               </div>
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700">
-                {compressedKb
-                  ? `Auto-compressed: ${compressedKb}KB`
-                  : "<100KB auto-compress"}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {exifStrippedReady && compressedKb ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    ✨ Image Optimized for Speed ({compressedKb}KB)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                    Live Camera Only · EXIF Stripped
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Always-mounted file & phone camera inputs so any button can trigger them reliably */}
-            <input
-              ref={fileInputRef}
-              id="civic-photo-upload"
-              type="file"
-              accept="image/*,.heic,.heif,.avif,.jfif,.webp,.bmp,.tif,.tiff"
-              onChange={handleFileInput}
-              className="sr-only"
-            />
+            {/* Live Camera Only input — gallery browsing disabled for citizen reports */}
             <input
               ref={mobileCameraInputRef}
               id="civic-phone-camera-upload"
+              data-testid="live-camera-file-input"
               type="file"
               accept="image/*"
               capture="environment"
@@ -1399,32 +1527,24 @@ export function ReportComposerClient() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                <label
-                  htmlFor="civic-photo-upload"
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors ${
-                    isDragging
-                      ? "border-blue-500 bg-blue-50/70"
-                      : "border-slate-200 bg-slate-50/70 hover:border-blue-400 hover:bg-blue-50/30"
-                  }`}
+                <div
+                  data-testid="live-camera-only-notice"
+                  className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-blue-200 bg-slate-50/70 px-4 py-6 text-center"
                 >
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-blue-600 shadow-xs ring-1 ring-slate-200">
-                    <Upload size={20} aria-hidden="true" />
+                    <Camera size={20} aria-hidden="true" />
                   </div>
                   <p className="mt-3 text-sm font-semibold text-slate-900">
-                    Drag &amp; drop issue photo or tap to browse
+                    Please capture the issue live with your camera.
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    All photo formats supported (JPG, PNG, WEBP, HEIC, AVIF, JFIF) · Auto-optimized
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Gallery uploads are disabled for citizen reports to prevent
+                    recycled photos. EXIF metadata is verified privately, then
+                    stripped before upload (&lt;200KB).
                   </p>
-                </label>
+                </div>
 
-                {/* Live Web Camera + Phone Camera + Gallery Controls */}
+                {/* Live Web Camera + Rear Camera Capture Controls (No Gallery) */}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
@@ -1448,7 +1568,7 @@ export function ReportComposerClient() {
                     className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
                   >
                     <Smartphone size={14} className="text-blue-600" aria-hidden="true" />
-                    <span>Phone Camera / Gallery</span>
+                    <span>Capture with Rear Camera</span>
                   </button>
                 </div>
 
@@ -1460,6 +1580,38 @@ export function ReportComposerClient() {
                   <Sparkles size={13} className="text-blue-600" aria-hidden="true" />
                   <span>Load Sample Indiranagar Pothole Photo</span>
                 </button>
+              </div>
+            )}
+
+            {/* Anti-Spam Status Badges (Needs Review / Duplicate / Verified) */}
+            {(needsReviewFlag ||
+              duplicateImageDetected ||
+              photoAuditStatus === "verified") && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {photoAuditStatus === "verified" && !duplicateImageDetected && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    <CheckCircle2 size={11} aria-hidden="true" />
+                    <span>Verified</span>
+                  </span>
+                )}
+                {needsReviewFlag && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                    <AlertCircle size={11} aria-hidden="true" />
+                    <span>Needs Review</span>
+                  </span>
+                )}
+                {duplicateImageDetected && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700">
+                    <AlertCircle size={11} aria-hidden="true" />
+                    <span>Duplicate</span>
+                  </span>
+                )}
+                {exifStrippedReady && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+                    <ShieldCheck size={11} className="text-blue-600" aria-hidden="true" />
+                    <span>EXIF Stripped</span>
+                  </span>
+                )}
               </div>
             )}
 
@@ -1819,7 +1971,7 @@ export function ReportComposerClient() {
               </h2>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
                 <Coins size={12} aria-hidden="true" />
-                +50 CivicPoints on Verified Fix
+                0 pts on submit · +50 pts on Verified Fix (≥90% AI Score)
               </span>
             </div>
 
@@ -2054,7 +2206,11 @@ export function ReportComposerClient() {
 
               <button
                 type="button"
-                disabled={submitting || photoAuditStatus === "rejected"}
+                disabled={
+                  submitting ||
+                  photoAuditStatus === "rejected" ||
+                  duplicateImageDetected
+                }
                 onClick={() => void handleSubmit()}
                 className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -2067,10 +2223,12 @@ export function ReportComposerClient() {
                   {validatingReport
                     ? "Verifying Authenticity with CivicSnap AI..."
                     : submitting
-                      ? "Submitting Verified Civic Report..."
-                      : photoAuditStatus === "rejected"
-                        ? "Replace Rejected Photo to Submit"
-                        : "Submit Verified Issue & Earn +50 CivicPoints"}
+                      ? "Submitting Live Civic Report..."
+                      : duplicateImageDetected
+                        ? "Duplicate Image Blocked — Capture New Live Photo"
+                        : photoAuditStatus === "rejected"
+                          ? "Replace Rejected Photo to Submit"
+                          : "Submit Live Civic Report (Points Awarded After Verification)"}
                 </span>
               </button>
             </div>

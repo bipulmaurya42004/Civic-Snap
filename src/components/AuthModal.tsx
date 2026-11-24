@@ -30,9 +30,9 @@ interface AuthModalContextValue {
 const AuthModalContext = createContext<AuthModalContextValue | null>(null);
 
 const VALUE_PROPS = [
-  "Report road hazards in 10 seconds via Hinglish voice",
-  "Track contractor material audits with Multimodal AI",
-  "Earn official 2026 State Merit Certificates & compete for CM Honors",
+  "Capture live-camera road hazards in 10 seconds with Hinglish voice",
+  "Track infrastructure repair audits with AI Confidence Scores",
+  "Unlock SHA-256 Civic Merit Certificates & 2026 Vanguard Standings",
 ] as const;
 
 export function AuthModalProvider({ children }: { children: ReactNode }) {
@@ -154,7 +154,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   {modalRequest?.message ||
-                    "Sign in with your Google account to submit AI-audited civic reports, upvote neighborhood priorities, and unlock your official 2026 State Merit Certificates."}
+                    "Sign in with your Google account to submit live-camera civic reports, upvote neighborhood priorities, and unlock SHA-256 verifiable 2026 Civic Merit Certificates."}
                 </p>
               </div>
 
@@ -226,8 +226,8 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
                   aria-hidden="true"
                 />
                 <span>
-                  Verified identity protects 2026 Chief Minister&apos;s Award
-                  standings from spam.
+                  Verified identity &amp; daily limits protect the 2026
+                  Bengaluru Civic Vanguard ledger from spam.
                 </span>
               </p>
             </motion.div>

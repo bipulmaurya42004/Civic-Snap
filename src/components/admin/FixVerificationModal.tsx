@@ -205,21 +205,34 @@ export function FixVerificationModal({
         );
       }
 
-      // Step 3: Apply Verdict to Firestore (Verified -> Resolved +25 pts; Flagged -> In Progress)
+      // Step 3: Apply Verdict to Firestore (Verified + AI Confidence Score >= 90% -> Resolved +50 pts; Flagged -> Needs Review)
+      const aiConfidenceScore =
+        typeof aiData.aiConfidenceScore === "number"
+          ? Math.round(aiData.aiConfidenceScore)
+          : aiData.verdict === "Verified"
+            ? 94
+            : 45;
+      const meetsConfidenceThreshold =
+        aiData.verdict === "Verified" && aiConfidenceScore >= 90;
+
       setStageMessage(
-        aiData.verdict === "Verified"
-          ? "AI Verified! Updating report to Resolved and crediting +25 CivicPoints..."
-          : "AI Flagged! Keeping report In Progress and recording verification note..."
+        meetsConfidenceThreshold
+          ? `AI Confidence Score ${aiConfidenceScore}% (≥90%)! Updating report to Resolved and crediting +${POINTS_PER_RESOLVED_REPORT} CivicPoints...`
+          : `AI Confidence Score ${aiConfidenceScore}% — flagging for Needs Review (0 pts awarded)...`
       );
 
+      const effectiveVerdict: "Verified" | "Flagged" = meetsConfidenceThreshold
+        ? "Verified"
+        : "Flagged";
+
       const outcome = evaluateVerificationOutcome(
-        aiData.verdict,
+        effectiveVerdict,
         report.reviewState
       );
 
       const combinedNote = [
         auditNote.trim(),
-        `AI Verification (${aiData.verdict}): ${aiData.reason}`,
+        `AI Verification (${effectiveVerdict} · ${aiConfidenceScore}% AI Confidence Score): ${aiData.reason}`,
       ]
         .filter(Boolean)
         .join(" · ")
@@ -231,13 +244,16 @@ export function FixVerificationModal({
         publicApproved: outcome.publicApproved,
         note: combinedNote,
         eventLabel:
-          aiData.verdict === "Verified"
-            ? "AI Fix Verified · Marked Resolved"
-            : "AI Verification Flagged · Kept In Progress",
+          effectiveVerdict === "Verified"
+            ? `AI Fix Verified (${aiConfidenceScore}% AI Confidence Score) · Resolved`
+            : `AI Verification Flagged (${aiConfidenceScore}% AI Confidence Score) · Needs Review`,
         beforeImageURL: uploadedBeforeUrl ?? null,
         afterImageURL: afterUpload.url ?? null,
         verificationStatus: outcome.verificationStatus,
         verificationReason: aiData.reason,
+        aiConfidenceScore,
+        needsReview: effectiveVerdict !== "Verified",
+        adminDecisionReason: combinedNote.slice(0, 300),
       });
 
       setVerificationResult({
@@ -446,13 +462,14 @@ export function FixVerificationModal({
         {/* Rule reminder */}
         <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs leading-5 text-slate-600">
           <strong className="font-semibold text-slate-900">
-            Automated Verification Rule:
+            Strict Anti-Spam Verification Rule:
           </strong>{" "}
-          If CivicSnap Vision AI returns <strong className="text-emerald-700">Verified</strong>,
-          status updates to <strong>Resolved</strong> and awards{" "}
-          <strong>+{POINTS_PER_RESOLVED_REPORT} CivicPoints</strong> to the
-          reporter. If <strong className="text-amber-700">Flagged</strong>, the
-          report stays <strong>In Progress</strong> for follow-up.
+          CivicPoints (<strong>+{POINTS_PER_RESOLVED_REPORT} pts</strong>) are
+          awarded strictly when CivicSnap Vision AI returns{" "}
+          <strong className="text-emerald-700">Verified</strong> with an{" "}
+          <strong>AI Confidence Score ≥ 90%</strong> AND Admin approves the
+          repair. Otherwise, the report stays <strong>Needs Review</strong> with
+          0 points.
         </div>
 
         {stageMessage && (

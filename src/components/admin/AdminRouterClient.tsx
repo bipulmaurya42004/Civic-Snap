@@ -90,7 +90,7 @@ export function AdminRouterClient() {
             }`}
           >
             <Database size={15} aria-hidden="true" />
-            <span>Municipal Operations Console</span>
+            <span>Audit Operations Console</span>
           </button>
         </div>
 
@@ -103,8 +103,8 @@ export function AdminRouterClient() {
         >
           <ShieldCheck size={13} aria-hidden="true" />
           {isAdmin
-            ? "Authorised Staff Session Active"
-            : "Read-Only Mode · Staff Required to Approve"}
+            ? "Authorised Reviewer Session Active"
+            : "Read-Only Mode · Reviewer Sign-In Required"}
         </span>
       </div>
 

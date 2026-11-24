@@ -12,23 +12,23 @@ interface FaqItem {
 
 const FAQ_ITEMS: readonly FaqItem[] = [
   {
-    id: "privacy-protection",
-    question: "How does CivicSnap protect my privacy and location data?",
+    id: "privacy-exif-protection",
+    question: "How does CivicSnap protect my privacy, EXIF metadata, and GPS data?",
     answer:
-      "Public issue cards display your ward, street landmark, and verified repair photos — never your personal email or phone number. You can also opt out of public citizen aliases anytime from your profile while still earning CivicPoints.",
+      "Citizen reports require live camera capture to deter reused screenshots. EXIF GPS coordinates and timestamps are checked privately inside your browser solely for anti-fraud review (flagging mismatches > 500m or photos older than 24 hours), then completely stripped before upload. Raw EXIF data is never stored or shown publicly.",
   },
   {
-    id: "state-civic-honors",
+    id: "vanguard-citation-points",
     question:
-      "How do the Chief Minister's Annual Civic Honors and Digital Certificates work?",
+      "How do Civic Merit Points, SHA-256 Certificates, and the Bengaluru Civic Vanguard Citation work?",
     answer:
-      "Citizens earn +50 Civic Merit Points for every AI-verified Before-vs-After infrastructure repair. Every 5 verified fixes automatically unlock an official Bengaluru Urban Digital Civic Merit Certificate with a unique verification ID ready for LinkedIn. At year-end (31st December), the Top 5 Bengaluru citizens are felicitated by the Hon'ble Chief Minister at the Annual Urban Governance Summit with a State Civic Medal, innovation grant, and 1-year Honorary Civic Warden designation.",
+      "Zero points are awarded on raw report submission. Citizens earn +50 Civic Merit Points strictly when a repair is marked Verified and Resolved with an AI Confidence Score ≥ 90% plus Admin approval. Every 5 verified fixes unlock a SHA-256 verifiable Certificate of Civic Merit (Independent Open Civic Audit Record). Annual Top 5 shortlist winners are reviewed by an independent community review panel for the Bengaluru Civic Vanguard Citation and a planned CivicTech Community Micro-Grant (aspirational, not funded in this prototype).",
   },
   {
-    id: "contractor-audits",
-    question: "How do AI contractor material audits prevent fake repairs?",
+    id: "anti-spam-duplicates",
+    question: "How does CivicSnap prevent duplicate images, spam, and point farming?",
     answer:
-      "When a citizen snaps an issue, CivicSnap Vision AI inspects photo authenticity, estimates repair materials (such as kg of hot-mix asphalt or LED fixtures), and computes a 30-day cost of delay. Before a ticket can close, contractors upload an After photo; CivicSnap Vision AI compares both photos for location match and repair quality, flagging duplicate or incomplete patches.",
+      "Every live photo is fingerprinted using a 64-bit perceptual hash before upload so duplicate or near-duplicate images are immediately rejected. Accounts are capped at 5 reports per day, and reports filed within 50 meters of a previously credited site enter a 30-day points cooldown.",
   },
   {
     id: "hinglish-voice",
@@ -37,10 +37,10 @@ const FAQ_ITEMS: readonly FaqItem[] = [
       "Yes. Tap the microphone button on /report and speak naturally (for example, 'Bhai yahan main road pe 2ft ka gaddha hai'). CivicSnap converts your Hinglish speech into a structured English title, category, and factual description for quick review.",
   },
   {
-    id: "gov-affiliation",
+    id: "independent-prototype",
     question: "Is CivicSnap an official government portal?",
     answer:
-      "CivicSnap is an independent civic-technology pilot built for Bengaluru communities (Indiranagar, HSR Layout, Koramangala, Whitefield, Jayanagar, MG Road, and Malleshwaram). It documents issues transparently and provides auditable proof timelines alongside community follow-up.",
+      "No. CivicSnap is an independent citizen-driven open civic tech prototype built for Bengaluru communities (Indiranagar, HSR Layout, Koramangala, Whitefield, Jayanagar, MG Road, and Malleshwaram). It is not affiliated with any municipal agency or state government, and documents issues transparently as an open civic audit ledger.",
   },
 ] as const;
 

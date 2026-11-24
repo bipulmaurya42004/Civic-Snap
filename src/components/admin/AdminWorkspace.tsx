@@ -50,6 +50,7 @@ export function AdminWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [noteById, setNoteById] = useState<Record<string, string>>({});
+  const [queueTab, setQueueTab] = useState<"all" | "flagged">("all");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [verifyingReport, setVerifyingReport] =
     useState<StoredPrivateReport | null>(null);
@@ -76,6 +77,18 @@ export function AdminWorkspace() {
   }, [authReady, user, isAdmin, loadReports]);
 
   const stats = useMemo(() => computeAdminReportStats(reports), [reports]);
+  const flaggedReports = useMemo(
+    () =>
+      reports.filter(
+        (r) =>
+          Boolean(r.needsReview) ||
+          r.verificationStatus === "flagged" ||
+          r.reviewState === "duplicate" ||
+          Boolean(r.flagReasons && r.flagReasons.length > 0)
+      ),
+    [reports]
+  );
+  const displayedReports = queueTab === "flagged" ? flaggedReports : reports;
 
   const handleAction = async (
     report: StoredPrivateReport,
@@ -85,6 +98,7 @@ export function AdminWorkspace() {
       publicApproved: boolean;
       defaultNote: string;
       actionLabel: string;
+      needsReview?: boolean;
     }
   ) => {
     if (!user) return;
@@ -93,11 +107,14 @@ export function AdminWorkspace() {
     setFeedback(null);
     try {
       const customNote = (noteById[report.id] ?? "").trim();
+      const decisionNote = customNote.length >= 2 ? customNote : next.defaultNote;
       const result = await moderateReportAsAdmin(user, report, {
         status: next.status,
         reviewState: next.reviewState,
         publicApproved: next.publicApproved,
-        note: customNote.length >= 2 ? customNote : next.defaultNote,
+        note: decisionNote,
+        needsReview: next.needsReview ?? false,
+        adminDecisionReason: decisionNote,
       });
 
       const deltaSummary =
@@ -299,14 +316,75 @@ export function AdminWorkspace() {
         </p>
       )}
 
+      {/* Queue Filter Tabs: All Reports vs Flagged Reports */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          role="tablist"
+          aria-label="Admin moderation queues"
+          className="inline-flex rounded-xl border border-slate-200 bg-white p-1"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={queueTab === "all"}
+            onClick={() => setQueueTab("all")}
+            className={`inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-colors ${
+              queueTab === "all"
+                ? "bg-[#2563EB] text-white"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <span>All Reports</span>
+            <span className="rounded-full bg-black/10 px-1.5 py-0.5 font-mono text-[11px]">
+              {reports.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={queueTab === "flagged"}
+            onClick={() => setQueueTab("flagged")}
+            className={`inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-lg px-3.5 text-xs font-semibold transition-colors ${
+              queueTab === "flagged"
+                ? "bg-amber-600 text-white"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <AlertTriangle size={13} aria-hidden="true" />
+            <span>Flagged Reports</span>
+            <span
+              className={`rounded-full px-1.5 py-0.5 font-mono text-[11px] ${
+                queueTab === "flagged"
+                  ? "bg-white/20 text-white"
+                  : "bg-amber-100 text-amber-800"
+              }`}
+            >
+              {flaggedReports.length}
+            </span>
+          </button>
+        </div>
+        <p className="text-xs text-slate-500">
+          0 pts on submit · +{POINTS_PER_RESOLVED_REPORT} pts strictly after AI
+          Confidence Score ≥ 90% &amp; Admin approval
+        </p>
+      </div>
+
       {/* Management Table */}
       {loading ? (
         <LoadingState label="Loading incoming live civic reports..." rows={3} />
-      ) : reports.length === 0 ? (
+      ) : displayedReports.length === 0 ? (
         <EmptyState
           icon={<ShieldCheck size={20} aria-hidden="true" />}
-          title="No submitted reports yet"
-          description="Reports submitted via /report will appear in this management table so you can accept them (+10 CivicPoints) or mark them resolved (+25 CivicPoints)."
+          title={
+            queueTab === "flagged"
+              ? "No flagged reports awaiting review"
+              : "No submitted reports yet"
+          }
+          description={
+            queueTab === "flagged"
+              ? "Reports with EXIF GPS drift (>500m), EXIF timestamp older than 24h, duplicate hashes, or low AI Confidence Scores appear here for approval or rejection."
+              : "Reports submitted via /report will appear in this management table. Points (+50) are awarded only after AI Confidence Score ≥ 90% and Admin verification."
+          }
           primaryAction={{ label: "Submit a Test Report", href: "/report" }}
         />
       ) : (
@@ -314,16 +392,19 @@ export function AdminWorkspace() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/70 px-5 py-3.5">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">
-                Report Management Queue
+                {queueTab === "flagged"
+                  ? "Flagged Reports — Anti-Spam Review Queue"
+                  : "Report Management Queue"}
               </h2>
               <p className="text-xs text-slate-500">
-                Accept Report awards +{POINTS_PER_ACCEPTED_REPORT} CivicPoints ·
-                Mark Resolved awards +{POINTS_PER_RESOLVED_REPORT} CivicPoints
-                total
+                Accept Report publishes with {POINTS_PER_ACCEPTED_REPORT} pts ·
+                Verified Fix (AI Confidence Score ≥ 90% + Admin approval) awards
+                +{POINTS_PER_RESOLVED_REPORT} CivicPoints
               </p>
             </div>
             <span className="font-mono text-xs font-semibold text-slate-600">
-              {reports.length} {reports.length === 1 ? "report" : "reports"}
+              {displayedReports.length}{" "}
+              {displayedReports.length === 1 ? "report" : "reports"}
             </span>
           </div>
 
@@ -352,7 +433,7 @@ export function AdminWorkspace() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 align-top">
-                {reports.map((report) => {
+                {displayedReports.map((report) => {
                   const isWorking = activeId === report.id;
                   const alreadyAccepted = report.reviewState === "accepted";
                   const alreadyResolved =
@@ -432,6 +513,16 @@ export function AdminWorkspace() {
                               <span>High Priority Zone</span>
                             </span>
                           </div>
+                        )}
+                        {report.flagReasons && report.flagReasons.length > 0 && (
+                          <ul className="mt-2 space-y-1 rounded-lg border border-amber-200 bg-amber-50/80 px-2.5 py-2 text-[11px] text-amber-900">
+                            {report.flagReasons.map((reason, idx) => (
+                              <li key={`${report.id}-flag-${idx}`} className="flex items-start gap-1">
+                                <AlertTriangle size={11} className="mt-0.5 shrink-0 text-amber-600" aria-hidden="true" />
+                                <span>{reason}</span>
+                              </li>
+                            ))}
+                          </ul>
                         )}
                         <p className="mt-1 font-semibold text-slate-900">
                           {report.title}
@@ -516,16 +607,33 @@ export function AdminWorkspace() {
                               {report.reviewState}
                             </strong>
                           </div>
+                          {report.needsReview && (
+                            <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+                              <AlertTriangle size={11} aria-hidden="true" />
+                              <span>Needs Review</span>
+                            </div>
+                          )}
+                          {report.reviewState === "duplicate" && (
+                            <div className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700">
+                              <AlertTriangle size={11} aria-hidden="true" />
+                              <span>Duplicate</span>
+                            </div>
+                          )}
                           {report.verificationStatus === "verified" && (
-                            <div className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                            <div className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800">
                               <CheckCircle2 size={11} aria-hidden="true" />
-                              <span>AI Verified Fix</span>
+                              <span>
+                                Verified
+                                {typeof report.aiConfidenceScore === "number"
+                                  ? ` (${report.aiConfidenceScore}% AI)`
+                                  : ""}
+                              </span>
                             </div>
                           )}
                           {report.verificationStatus === "flagged" && (
-                            <div className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                            <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
                               <AlertTriangle size={11} aria-hidden="true" />
-                              <span>AI Flagged</span>
+                              <span>Needs Review (AI Flagged)</span>
                             </div>
                           )}
                           <div className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-0.5 font-mono text-xs font-semibold text-[#2563EB]">
@@ -536,7 +644,7 @@ export function AdminWorkspace() {
                       </td>
 
                       {/* Admin Actions Column */}
-                      <td className="min-w-[240px] px-4 py-4">
+                      <td className="min-w-[260px] px-4 py-4">
                         <div className="space-y-2.5">
                           <input
                             type="text"
@@ -547,14 +655,14 @@ export function AdminWorkspace() {
                                 [report.id]: e.target.value,
                               }))
                             }
-                            placeholder="Optional audit note"
-                            aria-label={`Audit note for ${report.id}`}
+                            placeholder="Approval or rejection reason..."
+                            aria-label={`Audit reason for ${report.id}`}
                             className="min-h-[34px] w-full rounded-lg border border-slate-200 px-2.5 text-xs text-slate-900 placeholder:text-slate-400"
                           />
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              disabled={isWorking || alreadyAccepted}
+                              disabled={isWorking || (alreadyAccepted && !report.needsReview)}
                               onClick={() =>
                                 void handleAction(report, {
                                   status:
@@ -563,9 +671,10 @@ export function AdminWorkspace() {
                                       : "pending",
                                   reviewState: "accepted",
                                   publicApproved: true,
+                                  needsReview: false,
                                   defaultNote:
-                                    "Report accepted by CivicSnap admin (+10 CivicPoints).",
-                                  actionLabel: "Accepted report",
+                                    "Approved by CivicSnap admin (0 pts until Verified Fix ≥ 90% AI Confidence Score).",
+                                  actionLabel: "Approved report",
                                 })
                               }
                               className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-50"
@@ -578,9 +687,9 @@ export function AdminWorkspace() {
                                 />
                               )}
                               <span>
-                                {alreadyAccepted
-                                  ? "Accepted"
-                                  : `Accept Report (+${POINTS_PER_ACCEPTED_REPORT} pts)`}
+                                {alreadyAccepted && !report.needsReview
+                                  ? "Approved"
+                                  : "Approve"}
                               </span>
                             </button>
 
@@ -596,8 +705,31 @@ export function AdminWorkspace() {
                               <ShieldCheck size={13} aria-hidden="true" />
                               <span>
                                 {alreadyResolved
-                                  ? "Resolved"
-                                  : `Mark Resolved (+${POINTS_PER_RESOLVED_REPORT} pts)`}
+                                  ? "Verified"
+                                  : `Verify Fix (+${POINTS_PER_RESOLVED_REPORT} pts)`}
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isWorking || report.reviewState === "rejected"}
+                              onClick={() =>
+                                void handleAction(report, {
+                                  status: "pending",
+                                  reviewState: "rejected",
+                                  publicApproved: false,
+                                  needsReview: false,
+                                  defaultNote:
+                                    "Rejected during admin anti-spam review (0 CivicPoints).",
+                                  actionLabel: "Rejected report",
+                                })
+                              }
+                              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <span>
+                                {report.reviewState === "rejected"
+                                  ? "Rejected"
+                                  : "Reject"}
                               </span>
                             </button>
                           </div>

@@ -4,9 +4,9 @@ import { AdminRouterClient } from "@/components/admin/AdminRouterClient";
 import { LoadingState } from "@/components/ui/StateViews";
 
 export const metadata: Metadata = {
-  title: "City Dashboard & AI Verification",
+  title: "Audit Dashboard & Flagged Reports Review",
   description:
-    "Municipal review console for side-by-side Before vs After contractor repair verification powered by CivicSnap Vision AI.",
+    "CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol. Review flagged reports, audit Before vs After photos with AI Confidence Scores, and verify fixes.",
 };
 
 export default function AdminPage() {
@@ -14,15 +14,15 @@ export default function AdminPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="max-w-3xl">
         <p className="text-xs font-semibold tracking-wide text-blue-600">
-          Bengaluru Pilot • City Dashboard &amp; AI Fix Verification
+          CivicSnap AI • Audit Verification &amp; Flagged Reports Queue
         </p>
         <h1 className="mt-2 font-[var(--font-heading)] text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-          CivicSnap municipal verification dashboard
+          CivicSnap audit &amp; fix verification dashboard
         </h1>
         <p className="mt-2.5 text-sm leading-6 text-slate-600 sm:text-base">
-          Compare citizen Before photos against contractor After repair proof
-          with CivicSnap Vision AI match scores, audit estimated materials, and
-          approve verified fixes.
+          Inspect flagged EXIF/duplicate reports, compare citizen Before photos
+          against After repair proof with AI Confidence Scores (≥ 90% required
+          for +50 Merit Points), and approve or reject submissions.
         </p>
       </div>
 

@@ -58,7 +58,7 @@ export function JudgeDemoWorkspace() {
 
   const activeDecision: AuditDecision = decisions[selectedItem.id] ?? "pending";
   const mapsUrl = buildGoogleMapsUrl(selectedItem.lat, selectedItem.lng);
-  const isHighConfidence = selectedItem.aiMatchPercent >= 80;
+  const isHighConfidence = selectedItem.aiMatchPercent >= 90;
 
   const setDecisionFor = (id: string, decision: AuditDecision) => {
     if (!canModerate) return;
@@ -93,19 +93,20 @@ export function JudgeDemoWorkspace() {
             {canModerate ? (
               <>
                 <strong className="font-semibold text-slate-900">
-                  Authorised Staff Session ({user?.email}):
+                  Authorised Reviewer Session ({user?.email}):
                 </strong>{" "}
-                Inspect Before-vs-After repair photos, CivicSnap Vision AI match
-                scores, and approve or reject contractor claims.
+                Inspect Before-vs-After repair photos, CivicSnap AI Confidence
+                Scores (≥ 90% required for +50 pts), and approve or reject
+                submissions.
               </>
             ) : (
               <>
                 <strong className="font-semibold text-slate-900">
                   Read-Only Public Audit View:
                 </strong>{" "}
-                You can inspect all contractor Before-vs-After photos and CivicSnap AI
-                match scores. Sign in with an authorised municipal staff account
-                to approve or reject repairs.
+                Inspect Before-vs-After photos and CivicSnap AI Confidence
+                Scores. Sign in with an authorised CivicSnap reviewer account to
+                approve or reject repairs.
               </>
             )}
           </p>
@@ -216,12 +217,12 @@ export function JudgeDemoWorkspace() {
                 {item.ward} ·{" "}
                 <span
                   className={
-                    item.aiMatchPercent >= 80
+                    item.aiMatchPercent >= 90
                       ? "font-semibold text-emerald-700"
-                      : "font-semibold text-rose-700"
+                      : "font-semibold text-amber-700"
                   }
                 >
-                  {item.aiMatchPercent}% AI Match
+                  {item.aiMatchPercent}% AI Confidence Score
                 </span>
               </p>
             </button>
@@ -297,13 +298,13 @@ export function JudgeDemoWorkspace() {
             <figcaption className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700">
               <span>After Photo · Contractor Proof</span>
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
                   isHighConfidence
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-rose-50 text-rose-700"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
                 }`}
               >
-                {isHighConfidence ? "AI Verified" : "Mismatch Flagged"}
+                {isHighConfidence ? "Verified" : "Needs Review"}
               </span>
             </figcaption>
             <div className="h-60 w-full">
@@ -316,7 +317,7 @@ export function JudgeDemoWorkspace() {
           </figure>
         </div>
 
-        {/* AI Match Meter & Engineering Material Audit */}
+        {/* AI Confidence Score Meter & Engineering Material Audit */}
         <div className="border-t border-slate-100 bg-slate-50/70 p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -329,17 +330,17 @@ export function JudgeDemoWorkspace() {
               ) : (
                 <AlertTriangle
                   size={16}
-                  className="text-rose-600"
+                  className="text-amber-600"
                   aria-hidden="true"
                 />
               )}
               <span className="text-sm font-bold text-slate-900">
-                AI Match Meter: {selectedItem.aiHeadline}
+                AI Confidence Score: {selectedItem.aiHeadline}
               </span>
             </div>
             <span
               className={`font-mono text-sm font-extrabold tabular-nums ${
-                isHighConfidence ? "text-emerald-700" : "text-rose-700"
+                isHighConfidence ? "text-emerald-700" : "text-amber-700"
               }`}
             >
               {selectedItem.aiMatchPercent}%
@@ -349,7 +350,7 @@ export function JudgeDemoWorkspace() {
           <div
             className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-200"
             role="progressbar"
-            aria-label="AI repair match score"
+            aria-label="AI Confidence Score"
             aria-valuenow={selectedItem.aiMatchPercent}
             aria-valuemin={0}
             aria-valuemax={100}
@@ -360,7 +361,7 @@ export function JudgeDemoWorkspace() {
               animate={{ width: `${selectedItem.aiMatchPercent}%` }}
               transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
               className={`h-full rounded-full ${
-                isHighConfidence ? "bg-emerald-600" : "bg-rose-600"
+                isHighConfidence ? "bg-emerald-600" : "bg-amber-500"
               }`}
             />
           </div>

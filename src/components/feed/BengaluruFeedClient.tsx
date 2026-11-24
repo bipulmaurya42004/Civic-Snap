@@ -720,9 +720,9 @@ export function BengaluruFeedClient() {
                 </figure>
               </div>
 
-              {/* AI Visual Match Meter */}
+              {/* AI Confidence Score Meter */}
               {(() => {
-                const matchScore = proofModalIssue.aiMatchPercent ?? 94.8;
+                const confidenceScore = proofModalIssue.aiMatchPercent ?? 94.8;
                 const modalMapsUrl = buildGoogleMapsUrl(
                   proofModalIssue.lat,
                   proofModalIssue.lng
@@ -737,25 +737,25 @@ export function BengaluruFeedClient() {
                           aria-hidden="true"
                         />
                         <span className="text-sm font-bold text-slate-900">
-                          {matchScore}% Visual Match — CivicSnap Vision AI Verified
+                          {confidenceScore}% AI Confidence Score — CivicSnap Vision Audit
                         </span>
                       </div>
                       <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-0.5 font-mono text-xs font-bold tabular-nums text-emerald-700">
-                        {matchScore}% Match
+                        {confidenceScore}% AI Confidence Score
                       </span>
                     </div>
 
                     <div
                       className="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-emerald-100"
                       role="progressbar"
-                      aria-label={`AI visual match score ${matchScore}%`}
-                      aria-valuenow={matchScore}
+                      aria-label={`AI Confidence Score ${confidenceScore}%`}
+                      aria-valuenow={confidenceScore}
                       aria-valuemin={0}
                       aria-valuemax={100}
                     >
                       <motion.div
                         initial={{ width: 0 }}
-                        animate={{ width: `${matchScore}%` }}
+                        animate={{ width: `${confidenceScore}%` }}
                         transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
                         className="h-full rounded-full bg-emerald-600"
                       />
@@ -763,7 +763,7 @@ export function BengaluruFeedClient() {
 
                     <p className="mt-2.5 text-xs leading-5 text-slate-700 sm:text-sm">
                       {proofModalIssue.aiVerificationSummary ||
-                        "CivicSnap Vision AI confirmed the same road corridor and verified that the reported civic hazard has been fully repaired."}
+                        "CivicSnap Vision AI audited the same road corridor and assessed that the reported civic hazard has been repaired."}
                     </p>
 
                     <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">

@@ -71,9 +71,10 @@ export function ReportAuthGate() {
               Sign In Required to Submit Reports
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Sign in with Google to submit AI-audited civic reports to the
-              Bengaluru public ledger, earn +50 Merit Points per verified fix,
-              and compete for the 2026 Chief Minister&apos;s State Medal.
+              Sign in with Google to capture live-camera civic audits for the
+              Bengaluru open ledger, earn +50 Merit Points strictly on verified
+              fixes (AI Confidence Score ≥ 90% + Admin approval), and qualify
+              for the 2026 Bengaluru Civic Vanguard Citation.
             </p>
 
             {errorMessage && (

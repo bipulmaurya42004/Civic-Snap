@@ -44,8 +44,10 @@ export const ALLOWED_PHOTO_EXTENSIONS = [
   ".tif",
   ".tiff",
 ] as const;
-export const POINTS_PER_ACCEPTED_REPORT = 10;
-export const POINTS_PER_RESOLVED_REPORT = 25;
+export const POINTS_PER_SUBMITTED_REPORT = 0;
+export const POINTS_PER_ACCEPTED_REPORT = 0;
+export const POINTS_PER_RESOLVED_REPORT = 50;
+export const MIN_AI_CONFIDENCE_FOR_POINTS = 90;
 
 export function getCategoryLabel(category: IssueCategory): string {
   return (
@@ -255,23 +257,42 @@ export function computeDashboardMetrics(
 }
 
 /**
- * Computes CivicPoints credited for a single report:
- * - Unreviewed, Duplicate, or Rejected: 0 pts
- * - Accepted (Pending / In Progress): 10 pts
- * - Resolved (Accepted + Resolved): 25 pts
+ * Computes CivicPoints credited for a single report under anti-spam rules:
+ * - Submission / Unreviewed / Pending / In Progress / Duplicate / Rejected: 0 pts
+ * - Location cooldown active (within 50m in 30 days): 0 pts
+ * - Resolved + Admin Approved + AI Verified (AI Confidence Score >= 90%): +50 pts
  */
 export function computeReportCivicPoints(
   status: IssueStatus,
   reviewState: ReviewState,
-  duplicateOfId?: string | null
+  duplicateOfId?: string | null,
+  options?: {
+    verificationStatus?: string | null;
+    aiConfidenceScore?: number | null;
+    locationCooldownApplied?: boolean | null;
+  }
 ): number {
-  if (reviewState !== "accepted" || duplicateOfId) {
+  if (
+    reviewState !== "accepted" ||
+    status !== "resolved" ||
+    duplicateOfId ||
+    options?.locationCooldownApplied
+  ) {
     return 0;
   }
-  if (status === "resolved") {
-    return POINTS_PER_RESOLVED_REPORT;
+  if (
+    options?.verificationStatus &&
+    options.verificationStatus !== "verified"
+  ) {
+    return 0;
   }
-  return POINTS_PER_ACCEPTED_REPORT;
+  if (
+    typeof options?.aiConfidenceScore === "number" &&
+    options.aiConfidenceScore < MIN_AI_CONFIDENCE_FOR_POINTS
+  ) {
+    return 0;
+  }
+  return POINTS_PER_RESOLVED_REPORT;
 }
 
 /**
@@ -282,13 +303,19 @@ export function computeCivicPointsDelta(
   previousPointsAwarded: number,
   nextStatus: IssueStatus,
   nextReviewState: ReviewState,
-  duplicateOfId?: string | null
+  duplicateOfId?: string | null,
+  options?: {
+    verificationStatus?: string | null;
+    aiConfidenceScore?: number | null;
+    locationCooldownApplied?: boolean | null;
+  }
 ): number {
   const prev = Math.max(0, Math.floor(previousPointsAwarded || 0));
   const target = computeReportCivicPoints(
     nextStatus,
     nextReviewState,
-    duplicateOfId
+    duplicateOfId,
+    options
   );
   return target - prev;
 }
@@ -379,7 +406,12 @@ export function deriveLeaderboard(
     const pts = computeReportCivicPoints(
       issue.status,
       issue.reviewState,
-      issue.duplicateOfId
+      issue.duplicateOfId,
+      {
+        verificationStatus: issue.verificationStatus,
+        aiConfidenceScore: issue.aiConfidenceScore,
+        locationCooldownApplied: issue.locationCooldownApplied,
+      }
     );
     if (pts <= 0) {
       continue;
@@ -598,7 +630,9 @@ export function parseFirestoreSubmitError(
   if (
     rawMessage.startsWith("Title must") ||
     rawMessage.startsWith("Description must") ||
-    rawMessage.startsWith("Please select")
+    rawMessage.startsWith("Please select") ||
+    rawMessage.startsWith("This image was already submitted") ||
+    rawMessage.startsWith("Daily limit reached")
   ) {
     return {
       message: rawMessage,

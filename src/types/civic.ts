@@ -111,6 +111,12 @@ export interface PublicIssueRecord {
   afterImageURL?: string;
   verificationStatus?: VerificationStatus;
   verificationReason?: string;
+  aiConfidenceScore?: number;
+  needsReview?: boolean;
+  flagReasons?: string[];
+  imageHash?: string;
+  locationCooldownApplied?: boolean;
+  adminDecisionReason?: string;
   /** Gemini Engineering Auditing insights */
   surroundingLandmarks?: string;
   materialEstimate?: string;
@@ -160,6 +166,7 @@ export interface ReportAuthenticityResponse {
 export interface FixVerificationResponse {
   verdict: "Verified" | "Flagged";
   verificationStatus: "verified" | "flagged";
+  aiConfidenceScore?: number;
   reason: string;
   demoMode: boolean;
   notice?: string;
@@ -191,7 +198,11 @@ export interface StateCivicBadge {
   id: StateCivicBadgeId;
   level: 1 | 2 | 3 | 4 | 5;
   title: string;
-  tierScope: "Ward Level" | "State Level" | "National Level" | "Annual CM Podium";
+  tierScope:
+    | "Ward Level"
+    | "City Level"
+    | "Bengaluru Vanguard"
+    | "Annual Vanguard Shortlist";
   requirementLabel: string;
   minVerifiedFixes: number | null;
   top5Only?: boolean;
@@ -220,6 +231,7 @@ export interface CivicCertificateData {
   certificateId: string;
   issuedDate: string;
   meritPoints: number;
+  sha256Hash?: string;
 }
 
 export interface CitizenHonorsSnapshot {

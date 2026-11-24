@@ -12,7 +12,6 @@ import {
   Coins,
   ExternalLink,
   FileCheck2,
-  Landmark,
   Loader2,
   Medal,
   Mic,
@@ -20,6 +19,7 @@ import {
   Siren,
   Sparkles,
   Trophy,
+  Users,
   Wrench,
 } from "lucide-react";
 import { SafeCivicImage } from "@/components/ui/SafeCivicImage";
@@ -38,8 +38,11 @@ import {
   ANNUAL_CM_SEASON_YEAR,
   ANNUAL_CM_SUMMIT_TITLE,
   buildCertificateVerifyUrl,
+  CERTIFICATE_HEADER_TITLE,
+  CERTIFICATE_RECORD_LABEL,
   CM_ANNUAL_AWARD_PERKS,
   CM_HERO_SPOTLIGHT_PILLARS,
+  computeCertificateSha256,
   formatCertificateIssueDate,
   generateCertificateId,
 } from "@/lib/civic-honors";
@@ -48,31 +51,31 @@ import type { CivicCertificateData } from "@/types/civic";
 const HOW_IT_WORKS_STEPS = [
   {
     step: "01",
-    title: "Snap & Speak",
+    title: "Live Camera Snap & Hinglish Voice",
     description:
-      "CivicSnap AI captures your live GPS ward and converts natural Hindi or Hinglish speech into a structured English civic report in seconds.",
+      "Capture public infrastructure hazards live with your camera (gallery uploads disabled, EXIF validated & stripped) and convert natural Hindi or Hinglish speech into a structured English audit report.",
     icon: Camera,
   },
   {
     step: "02",
-    title: "AI Material Audit",
+    title: "AI Material & Anti-Spam Audit",
     description:
-      "Prevents contractor overbilling by estimating exact repair materials (asphalt tonnage, LED fixtures, labor hours) and flagging Hospital/School priority zones.",
+      "Estimates repair materials (asphalt tonnage, LED fixtures, labor hours), flags Hospital/School priority zones, and blocks duplicate images via perceptual hashing and daily rate limits.",
     icon: Wrench,
   },
   {
     step: "03",
-    title: "Verified Fix & 2026 State Honors",
+    title: "AI Confidence Score ≥ 90% & Vanguard Citation",
     description:
-      "CivicSnap Vision AI verifies the contractor's After photo, logs +50 Civic Merit Points toward Annual 2026 CM Standings, and automatically unlocks Digital Merit Certificates every 5 fixes.",
+      "Zero points are awarded on raw submission. Citizens earn +50 Civic Merit Points strictly when a repair is Admin-approved with an AI Confidence Score ≥ 90%, unlocking SHA-256 Merit Certificates every 5 fixes.",
     icon: Award,
   },
 ] as const;
 
 const PILLAR_ICONS = {
-  medal: Medal,
+  citation: Medal,
   grant: Coins,
-  warden: Landmark,
+  panel: Users,
 } as const;
 
 const HINGLISH_DEMO_PHRASE = "Bhai Chinmaya Hospital road pe deep pothole hai";
@@ -100,13 +103,26 @@ export function HomeLandingClient() {
     []
   );
 
+  const sampleSha256 = useMemo(
+    () =>
+      computeCertificateSha256({
+        certificateId: SAMPLE_CERT_ID,
+        recipientName: "Aarav Sharma",
+        ward: "Ward 82 · Indiranagar",
+        verifiedFixes: 5,
+        meritPoints: 750,
+        milestoneLevel: 1,
+      }),
+    []
+  );
+
   const handleReportAction = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (!user) {
       event.preventDefault();
       openAuthModal({
         title: "Sign In to Report a Civic Issue",
         message:
-          "Sign in with Google to file verified 2026 road, streetlight, or waste audits and earn +50 Merit Points toward the Chief Minister's Civic Champions Award.",
+          "Sign in with Google to capture live-camera road, streetlight, or waste audits and earn +50 Merit Points on verified fixes (AI Confidence Score ≥ 90% + Admin approval).",
         redirectTo: "/report",
       });
     }
@@ -119,10 +135,11 @@ export function HomeLandingClient() {
       verifiedFixes: 5,
       milestoneLevel: 1,
       milestoneTitle:
-        "Official Civic Merit Certificate (Level 1: 5 Verified Fixes)",
+        "Civic Merit Certificate (Level 1: 5 Verified Fixes)",
       certificateId: SAMPLE_CERT_ID,
       issuedDate: formatCertificateIssueDate(),
       meritPoints: 750,
+      sha256Hash: sampleSha256,
     });
   };
 
@@ -170,13 +187,12 @@ export function HomeLandingClient() {
 
   return (
     <PageTransition>
-      {/* HERO SECTION — Clean White to Soft Slate Gradient with Grand 2026 CM Spotlight */}
+      {/* HERO SECTION — Clean Light SaaS with Bengaluru Civic Vanguard 2026 Spotlight */}
       <section className="border-b border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
           <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-10">
-            {/* Left Column: Royal Gold Badge + Power Dual Headline + Grand CM Spotlight Card + CTAs */}
+            {/* Left Column: Independent Civic Protocol Pill + Dual Headline + Vanguard Spotlight Card + CTAs */}
             <div className="lg:col-span-7">
-              {/* Top Royal Gold Badge */}
               <div className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-1.5 text-xs font-semibold text-amber-900 shadow-sm sm:text-sm">
                 <Trophy
                   size={15}
@@ -184,12 +200,11 @@ export function HomeLandingClient() {
                   className="shrink-0 text-amber-600"
                 />
                 <span>
-                  Official Karnataka State Initiative • Annual CM Civic Honors{" "}
+                  Independent Open Civic Protocol • Bengaluru Civic Vanguard{" "}
                   {ANNUAL_CM_SEASON_YEAR}
                 </span>
               </div>
 
-              {/* Power Dual Headline */}
               <h1
                 className="mt-4 font-[var(--font-heading)] font-extrabold leading-[1.08] tracking-tight text-slate-900"
                 style={{
@@ -199,26 +214,23 @@ export function HomeLandingClient() {
               >
                 Turn Broken Roads into Verified Fixes.
                 <span className="mt-1.5 block bg-gradient-to-r from-blue-700 via-blue-600 to-amber-600 bg-clip-text text-transparent">
-                  Win the Chief Minister&apos;s State Medal &amp; Honors.
+                  Earn the Bengaluru Civic Vanguard Citation.
                 </span>
               </h1>
 
-              {/* Grand "CM Civic Champions Spotlight Card" Prominently Inside Hero */}
+              {/* Bengaluru Civic Vanguard Citation Spotlight Card */}
               <div
-                data-testid="hero-cm-spotlight-card"
+                data-testid="hero-vanguard-spotlight-card"
                 className="mt-6 mb-6 rounded-2xl border-2 border-amber-300 bg-gradient-to-r from-amber-50/90 via-white to-amber-50/70 p-5 text-left shadow-md shadow-amber-500/10 sm:p-6"
               >
-                {/* Header Row */}
                 <div className="flex flex-wrap items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2 text-xs font-bold tracking-wide text-amber-900 uppercase sm:text-sm">
-                    <Landmark
+                    <Award
                       size={16}
                       aria-hidden="true"
                       className="shrink-0 text-amber-700"
                     />
-                    <span>
-                      THE CHIEF MINISTER&apos;S ANNUAL CIVIC CHAMPIONS TROPHY
-                    </span>
+                    <span>BENGALURU CIVIC VANGUARD CITATION 2026</span>
                   </div>
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-[11px] font-bold text-amber-950 whitespace-nowrap">
                     <Clock size={12} aria-hidden="true" />
@@ -226,15 +238,14 @@ export function HomeLandingClient() {
                   </span>
                 </div>
 
-                {/* Hero Subtext */}
                 <p className="mt-3 text-sm leading-6 text-slate-700">
-                  The Top 5 Bengaluru citizens with the highest AI-verified
-                  fixes in 2026 will be personally felicitated by the
-                  Hon&apos;ble Chief Minister at the Annual Urban Governance
-                  Summit at Vidhana Soudha.
+                  The Top 5 independent Bengaluru citizen auditors with the
+                  highest verified fixes in 2026 (AI Confidence Score ≥ 90% +
+                  Admin approval) are reviewed by an independent community
+                  review panel for the Bengaluru Civic Vanguard Citation.
                 </p>
 
-                {/* 3 Prestige Pillars */}
+                {/* 3 Transparent Pillars */}
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   {CM_HERO_SPOTLIGHT_PILLARS.map((pillar) => {
                     const PillarIcon = PILLAR_ICONS[pillar.id];
@@ -259,10 +270,10 @@ export function HomeLandingClient() {
                   })}
                 </div>
 
-                {/* Certificate Tagline */}
                 <p className="mt-4 border-t border-amber-200/70 pt-3 text-xs font-semibold text-amber-900">
-                  ✦ Plus: Automatically receive official digital Bengaluru Urban
-                  merit certificates for every 5 verified reports.
+                  ✦ Plus: Automatically unlock SHA-256 verifiable digital Civic
+                  Merit Certificates (Independent Open Civic Audit Record) for
+                  every 5 verified repairs.
                 </p>
               </div>
 
@@ -285,7 +296,7 @@ export function HomeLandingClient() {
                     aria-hidden="true"
                     className="text-amber-600"
                   />
-                  <span>View 2026 CM Standings &amp; Leaderboard</span>
+                  <span>View 2026 Vanguard Standings</span>
                 </Link>
               </div>
 
@@ -365,15 +376,14 @@ export function HomeLandingClient() {
               </div>
             </div>
 
-            {/* Right Column: Interactive AI Audit & Verification Card */}
+            {/* Right Column: Interactive AI Audit & Confidence Score Card */}
             <div className="lg:col-span-5">
               <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
-                {/* Card Top Header + Interactive Toggle */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
                       <CheckCircle2 size={12} aria-hidden="true" />
-                      <span>AI Verified</span>
+                      <span>Verified</span>
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
                       <Siren size={12} aria-hidden="true" />
@@ -447,7 +457,7 @@ export function HomeLandingClient() {
                     <p className="text-xs font-medium text-white/85">
                       {auditView === "before"
                         ? "Reported Hazard · Ward 82 (Indiranagar)"
-                        : "Contractor Proof Verified · 94.8% Visual Match"}
+                        : "Repair Audited · 94.8% AI Confidence Score"}
                     </p>
                     <p className="mt-0.5 text-sm font-bold">
                       Severe Pothole near Chinmaya Mission Hospital
@@ -496,11 +506,11 @@ export function HomeLandingClient() {
                         aria-hidden="true"
                       />
                       <span>
-                        AI Before-vs-After Verified (94.8% Match) •{" "}
+                        AI Confidence Score: 94.8% + Admin Approved •{" "}
                         <strong className="text-amber-800">
                           +50 Merit Points
                         </strong>{" "}
-                        awarded toward Annual 2026 CM Standings!
+                        awarded strictly on verified fixes (0 pts on raw submit).
                       </span>
                     </span>
                   </div>
@@ -527,29 +537,32 @@ export function HomeLandingClient() {
         </div>
       </section>
 
-      {/* SECTION 1 — Annual CM Summit 2026 Prestige Breakdown */}
+      {/* SECTION 1 — Bengaluru Civic Vanguard Citation 2026 Breakdown */}
       <section
-        id="cm-honors"
+        id="vanguard-honors"
         className="scroll-mt-20 border-b border-slate-200/80 bg-gradient-to-br from-white via-amber-50/40 to-blue-50/45 py-16 sm:py-20"
       >
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
             <div className="max-w-3xl">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
-                <Landmark size={13} aria-hidden="true" />
+                <Award size={13} aria-hidden="true" />
                 <span>{ANNUAL_CM_SUMMIT_TITLE}</span>
               </span>
               <h2
                 className="mt-3 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-4xl"
                 style={{ textWrap: "balance" }}
               >
-                The 2026 Chief Minister&apos;s Annual Civic Champions Trophy
+                The 2026 Bengaluru Civic Vanguard Citation
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-                Held annually once at the {ANNUAL_CM_SUMMIT_TITLE} at Vidhana
-                Soudha. The top 5 citizen stewards with the highest AI-verified
-                points receive official state honors, medals, and civic grants
-                directly from the Hon&apos;ble Chief Minister.
+                Each annual audit cycle closes on{" "}
+                <strong className="font-semibold text-slate-900">
+                  {ANNUAL_CM_SEASON_CLOSE_LABEL}
+                </strong>
+                . The Top 5 citizen contributors with the highest verified
+                Merit Points are independently audited by a community review
+                panel and recognized on the open public ledger.
               </p>
             </div>
 
@@ -558,11 +571,11 @@ export function HomeLandingClient() {
               className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
             >
               <Trophy size={16} aria-hidden="true" />
-              <span>View 2026 Top 5 CM Race</span>
+              <span>View 2026 Vanguard Shortlist</span>
             </Link>
           </div>
 
-          {/* 4 Key Perks of Top 5 */}
+          {/* 4 Transparent Recognition Pillars */}
           <div className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {CM_ANNUAL_AWARD_PERKS.map((perk, idx) => (
               <StaggerReveal key={perk.number} delay={idx * 0.05}>
@@ -573,7 +586,7 @@ export function HomeLandingClient() {
                         {perk.number}
                       </span>
                       <span className="text-[11px] font-semibold text-amber-700">
-                        2026 Top 5 Honor
+                        2026 Top 5 Shortlist
                       </span>
                     </div>
                     <h3 className="mt-4 text-base font-bold leading-snug text-slate-900">
@@ -588,21 +601,21 @@ export function HomeLandingClient() {
             ))}
           </div>
 
-          {/* Live 2026 Season Deadline Counter Bar */}
+          {/* Season Cutoff Counter Bar */}
           <div className="mt-7 flex flex-col items-start justify-between gap-3 rounded-2xl border border-amber-300/80 bg-white px-5 py-4 shadow-xs sm:flex-row sm:items-center">
             <div className="flex items-center gap-3 text-sm font-semibold text-slate-900">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
                 <Clock size={17} aria-hidden="true" />
               </span>
               <span>
-                {ANNUAL_CM_SEASON_YEAR} Annual Season Closes:{" "}
+                {ANNUAL_CM_SEASON_YEAR} Annual Audit Cycle Closes:{" "}
                 <strong className="text-blue-700">
                   {ANNUAL_CM_SEASON_CLOSE_LABEL}
                 </strong>{" "}
                 <span className="text-slate-300" aria-hidden="true">
                   •
                 </span>{" "}
-                Final Weeks to Qualify!
+                Independent Panel Review Required
               </span>
             </div>
             <Link
@@ -616,7 +629,7 @@ export function HomeLandingClient() {
         </div>
       </section>
 
-      {/* SECTION 2 — Automated Tamper-Proof 2026 Digital Certificate Showcase */}
+      {/* SECTION 2 — Automated SHA-256 Tamper-Evident 2026 Digital Certificate Showcase */}
       <section
         id="certificates"
         className="scroll-mt-20 border-b border-slate-200/80 bg-white py-16 sm:py-20"
@@ -626,19 +639,20 @@ export function HomeLandingClient() {
             {/* Left Description Column */}
             <div className="lg:col-span-5">
               <p className="text-xs font-semibold tracking-wide text-blue-600">
-                Tamper-Proof 2026 Credentials · QR Public Verification
+                SHA-256 Tamper-Evident Credentials · Public QR Verification
               </p>
               <h2
                 className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-3xl"
                 style={{ textWrap: "balance" }}
               >
-                Earn Official State Recognition on Autopilot.
+                Earn Verifiable Open Civic Audit Records on Autopilot.
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-                Every 5 verified reports unlock an official 2026 digital
-                &ldquo;Civic Merit Certificate&rdquo; branded for the{" "}
-                {ANNUAL_CM_SUMMIT_TITLE}. Add directly to LinkedIn and verify
-                via public QR code.
+                Every 5 verified reports (AI Confidence Score ≥ 90% + Admin
+                approval) automatically unlock a 2026{" "}
+                &ldquo;Certificate of Civic Merit&rdquo; issued by CivicSnap as
+                an Independent Open Civic Audit Record with a deterministic
+                SHA-256 digest.
               </p>
 
               <ul className="mt-6 space-y-3 text-sm text-slate-700">
@@ -650,11 +664,11 @@ export function HomeLandingClient() {
                   />
                   <span>
                     Auto-generated at 5, 10, 15, and 20 verified fixes with
-                    unique tamper-evident{" "}
+                    unique{" "}
                     <code className="font-mono text-xs text-slate-900">
                       CS-BLR-2026-XXXXXX
                     </code>{" "}
-                    ID.
+                    ID and SHA-256 fingerprint.
                   </span>
                 </li>
                 <li className="flex items-start gap-2.5">
@@ -668,7 +682,7 @@ export function HomeLandingClient() {
                     <code className="font-mono text-xs text-slate-900">
                       /verify/[id]
                     </code>{" "}
-                    and {ANNUAL_CM_SUMMIT_TITLE} seal.
+                    for instant independent ledger validation.
                   </span>
                 </li>
                 <li className="flex items-start gap-2.5">
@@ -678,8 +692,8 @@ export function HomeLandingClient() {
                     aria-hidden="true"
                   />
                   <span>
-                    One-click Print/PDF download and LinkedIn Add Certification
-                    integration.
+                    One-click Print/PDF download and LinkedIn Certification
+                    export clearly marked as an Independent Prototype record.
                   </span>
                 </li>
               </ul>
@@ -703,39 +717,48 @@ export function HomeLandingClient() {
               </div>
             </div>
 
-            {/* Right Framed Gold-Bordered Certificate Visual Preview */}
+            {/* Right Framed Gold-Bordered Independent Certificate Visual Preview */}
             <div className="lg:col-span-7">
               <div className="rounded-2xl border-4 border-double border-amber-500/90 bg-gradient-to-b from-amber-50/40 via-white to-amber-50/30 p-3 shadow-md sm:p-5">
                 <div className="rounded-xl border border-amber-300/80 bg-white px-5 py-6 text-center sm:px-8 sm:py-8">
                   <p className="text-[10px] font-bold tracking-[0.16em] text-blue-700 uppercase">
-                    GOVERNMENT OF KARNATAKA • {ANNUAL_CM_SUMMIT_TITLE}
+                    {CERTIFICATE_RECORD_LABEL} • BENGALURU 2026
                   </p>
-                  <h3 className="mt-3 font-[var(--font-heading)] text-xl font-extrabold tracking-wide text-slate-900 sm:text-2xl">
-                    CERTIFICATE OF CIVIC MERIT
+                  <h3 className="mt-3 font-[var(--font-heading)] text-lg font-extrabold tracking-wide text-slate-900 sm:text-xl">
+                    {CERTIFICATE_HEADER_TITLE}
                   </h3>
                   <p className="mt-1 text-xs font-semibold text-amber-700">
-                    Level 1 · State Urban Sentinel (5 Verified Fixes · 2026)
+                    Level 1 · Bengaluru Urban Sentinel (5 Verified Fixes · 2026)
                   </p>
 
                   <p className="mt-4 text-xs text-slate-500">
-                    This is proudly presented to
+                    This is presented to
                   </p>
                   <p className="mx-auto mt-1 inline-block border-b-2 border-amber-400 px-5 pb-1 font-[var(--font-heading)] text-xl font-extrabold text-blue-900 sm:text-2xl">
                     Aarav Sharma
                   </p>
 
                   <p className="mx-auto mt-3 max-w-md text-xs leading-6 text-slate-600">
-                    in recognition of outstanding civic stewardship and
-                    verifying{" "}
+                    in recognition of independent civic auditing and verifying{" "}
                     <strong className="font-semibold text-slate-900">
                       5 public infrastructure fixes
                     </strong>{" "}
-                    in Bengaluru Urban, validated through CivicSnap AI Audit in{" "}
-                    {ANNUAL_CM_SEASON_YEAR}.
+                    in Bengaluru, validated through CivicSnap AI Confidence
+                    Score audits in {ANNUAL_CM_SEASON_YEAR}.
                   </p>
 
-                  <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-t border-slate-200 pt-5 text-left">
-                    {/* QR + Certificate Hash */}
+                  {/* Cryptographic SHA-256 Hash Preview */}
+                  <div className="mx-auto mt-4 max-w-lg rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left">
+                    <p className="text-[10px] font-bold tracking-wide text-slate-500 uppercase">
+                      SHA-256 Cryptographic Audit Hash
+                    </p>
+                    <p className="mt-0.5 truncate font-mono text-[10px] font-semibold text-slate-800">
+                      {sampleSha256}
+                    </p>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap items-end justify-between gap-4 border-t border-slate-200 pt-5 text-left">
+                    {/* QR + Certificate ID */}
                     <div className="flex items-center gap-2.5">
                       <div
                         aria-hidden="true"
@@ -756,11 +779,11 @@ export function HomeLandingClient() {
                         <p className="font-mono text-[11px] font-bold text-slate-900">
                           {SAMPLE_CERT_ID}
                         </p>
-                        <p>Summit 2026 Verified</p>
+                        <p>Open Audit Verified</p>
                       </div>
                     </div>
 
-                    {/* Gold Embossed Seal */}
+                    {/* Gold Embossed Open Civic Seal */}
                     <div className="flex h-16 w-16 flex-col items-center justify-center rounded-full border-2 border-double border-amber-600 bg-gradient-to-br from-amber-100 via-amber-200 to-amber-400 text-center">
                       <ShieldCheck
                         size={14}
@@ -768,17 +791,17 @@ export function HomeLandingClient() {
                         aria-hidden="true"
                       />
                       <span className="mt-0.5 text-[7px] font-extrabold tracking-wide text-amber-950 uppercase">
-                        Summit 2026
+                        SHA-256 Audit
                       </span>
                     </div>
 
-                    {/* Directorate Sign-off */}
+                    {/* Independent Protocol Sign-off */}
                     <div className="text-right">
                       <p className="font-serif text-sm italic font-semibold text-blue-900">
-                        Urban Dev. Directorate
+                        CivicSnap Audit Protocol
                       </p>
                       <p className="text-[10px] font-medium text-slate-500">
-                        Official Digital Signatory
+                        {CERTIFICATE_RECORD_LABEL}
                       </p>
                     </div>
                   </div>
@@ -803,8 +826,8 @@ export function HomeLandingClient() {
               className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-3xl"
               style={{ textWrap: "balance" }}
             >
-              From street snap to AI-verified fix and 2026 state honors in three
-              steps
+              From live camera snap to verified repair and SHA-256 civic
+              recognition in three steps
             </h2>
           </div>
 
@@ -844,14 +867,14 @@ export function HomeLandingClient() {
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold tracking-wide text-blue-600">
-              FAQ &amp; Help
+              FAQ &amp; Transparency
             </p>
             <h2
               className="mt-2 font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-3xl"
               style={{ textWrap: "balance" }}
             >
-              Clear answers on 2026 State Honors, Certificates, and AI
-              contractor audits
+              Clear answers on Anti-Spam Verification, SHA-256 Certificates, and
+              AI Audits
             </h2>
           </div>
 
@@ -865,20 +888,21 @@ export function HomeLandingClient() {
       <section className="bg-slate-50 py-16 sm:py-20">
         <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
           <p className="text-xs font-semibold tracking-wide text-blue-600">
-            Bengaluru CivicSnap Pilot · State Urban Governance Honors{" "}
+            CivicSnap AI · Independent Bengaluru Public Infrastructure Ledger{" "}
             {ANNUAL_CM_SEASON_YEAR}
           </p>
           <h2
             className="mx-auto mt-2 max-w-2xl font-[var(--font-heading)] text-2xl font-bold text-slate-900 sm:text-4xl"
             style={{ textWrap: "balance" }}
           >
-            Spot a broken road or unlit lane? File a verified audit in 10
+            Spot a broken road or unlit lane? File a live-camera audit in 10
             seconds.
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-slate-600">
-            Earn +50 Civic Merit Points per AI-verified repair, unlock automated
-            2026 Bengaluru Urban Merit Certificates, and compete for the Chief
-            Minister&apos;s Annual Civic Champions Trophy.
+            Earn +50 Civic Merit Points strictly when a repair is Admin-approved
+            with an AI Confidence Score ≥ 90%, unlock SHA-256 Merit
+            Certificates, and qualify for the 2026 Bengaluru Civic Vanguard
+            Citation.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3.5">

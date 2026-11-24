@@ -1,65 +1,81 @@
-# CivicSnap
+# CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol
 
-**Snap. Report. Track.**  
-*Sirf photo nahi. Follow-up bhi.*
-
-CivicSnap is an independent civic-technology prototype where residents, students, commuters, and volunteers can create photo-based reports of local city issues, review editable AI category suggestions, and follow available status updates in one place.
-
-> **Important boundary:** CivicSnap is **not** an official government service and has no affiliation with any municipal authority. Submitting a report does not automatically send it to authorities or guarantee a repair. Prototype status updates are managed by the CivicSnap project team.
+> **Independent Citizen-Driven Open Civic Tech Prototype** — Live-camera street reporting, Hinglish voice-to-report AI, anti-spam verification, Before-vs-After Gemini Vision audits, and SHA-256 tamper-evident Civic Merit Certificates for Bengaluru (2026).
 
 ---
 
-## Current Status: Milestone 1 — Runnable UI Foundation
+## Disclaimer
 
-This repository currently implements **Milestone 1** (genuine Next.js App Router + TypeScript + Tailwind CSS UI foundation). It is **not** the finished backend submission yet.
-
-### What works in Milestone 1
-- Genuine **Next.js App Router** TypeScript application (`strict: true`) with Tailwind CSS v4 and `next/font/google` (`Plus Jakarta Sans` + `Inter`).
-- Brand system including original SVG pin-and-lens logo (`CivicSnapLogo`), accessible status indicators (color + icon + text), and reusable loading, empty, and error state components.
-- Complete responsive **Landing Page** (`/`) with all 10 sections (Header, Hero with clearly labelled sample report preview, The Problem, How It Works, Feature Grid, Interactive Product Preview using real app components, Why CivicSnap dark contrast section, FAQ accordion, Final CTA, and Footer with independent-project disclaimer).
-- Interactive **Read-Only Demo** (`/demo`) with prominent sample-data banner, fictional localities (`Demo Area A`–`Demo Area D`), live filtering/sorting/pagination, sample report detail timelines (`/issues/CS-DEMO-101`–`CS-DEMO-106`), sample dashboard, and server-rule-derived sample leaderboard.
-- All main route layouts ready for modular backend integration: `/`, `/demo`, `/report`, `/issues`, `/issues/[id]`, `/dashboard`, `/leaderboard`, `/profile`, `/login`, `/signup`, `/admin`, `/privacy`.
-- Decoupled, unit-tested domain logic (`src/lib/civic-logic.ts` & `src/lib/civic-logic.test.ts`).
-
-### Remaining Milestones
-- **Milestone 2 — Real Supabase Flow**: Postgres migrations, Row Level Security policies, private Storage bucket + policies, `@supabase/ssr` Auth (`/login`, `/signup`, callbacks), server-side photo validation & EXIF stripping, real report creation, saved report detail pages, and user profile management.
-- **Milestone 3 — AI, Admin, and Real Data**: Authenticated server-side Gemini image analysis (`@google/genai`) with schema validation, persistent rate limiting, and manual fallback; protected server-verified `/admin` workflow with atomic `report_events` transitions; live `/dashboard` queries and server-derived opt-in `/leaderboard`.
-- **Milestone 4 — Verification and Deployment**: End-to-end checks for auth, persistence, private-data isolation, AI fallback, mobile usability, and Vercel production deployment.
+CivicSnap is an independent citizen-driven open civic tech prototype. It is not affiliated with, nor an official agency of, the BBMP, BDA, or the Government of Karnataka.
 
 ---
 
-## 1. Local Installation
+## Key Features
 
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
+### 1. Anti-Spam & Fraud-Prevention Verification Layer
+- **Live Camera Only (`/report`)**: Uses `<input type="file" accept="image/*" capture="environment">` with gallery selection disabled to deter reused screenshots and stock photos.
+- **Private EXIF Validation & Stripping (`exifr`)**: Reads EXIF GPS and timestamp privately in-browser, automatically flagging reports as **Needs Review** if EXIF GPS differs by > 500m from reported GPS or if the photo timestamp is older than 24 hours. Raw EXIF data is never displayed publicly and is completely stripped via `<canvas>` re-encoding (< 200KB optimization).
+- **Perceptual Image Hashing (`imageHash`)**: Computes a 64-bit average perceptual hash client-side and rejects duplicate or near-duplicate submissions (`"This image was already submitted."`).
+- **Daily Rate Limits & 50m / 30-Day Cooldown**: Enforces a maximum of 5 reports per user per day and prevents earning points twice within 50m of an existing report inside a 30-day window.
+- **Verification-Only Points**: Zero points are awarded on submission or acceptance. `+50 Civic Merit Points` are credited strictly when a report is marked **Verified & Resolved** with **AI Confidence Score ≥ 90%** AND **Admin approval**.
+- **Admin Flagged Reports Queue (`/admin`)**: Dedicated **Flagged Reports** tab listing EXIF/fraud flag reasons with **Approve**, **Reject**, and Before-vs-After AI Verification actions.
+
+### 2. Multimodal AI Audit & Hinglish Voice Intake
+- **Hinglish Voice-to-Report**: Converts natural Hindi/Hinglish spoken complaints into structured English titles, categories, and descriptions via server-side Gemini API routes (`/api/gemini`).
+- **Material & Priority Audit**: Estimates repair materials (asphalt kg, LED fixtures, labor hours) and automatically tags **Hospital / School High Priority Zones**.
+- **Before-vs-After AI Confidence Score**: Compares original citizen hazard photos against repair proof photos and outputs a calibrated **AI Confidence Score (0–100%)**.
+
+### 3. SHA-256 Civic Merit Certificates & Bengaluru Civic Vanguard 2026
+- **Certificate of Civic Merit — Issued by CivicSnap (Independent Prototype)**: Automatically unlocked every 5 verified fixes with format `CS-BLR-2026-<UID>`, scannable QR code, public `/verify/[id]` portal, and deterministic **SHA-256 audit hash** (`Independent Open Civic Audit Record`).
+- **Bengaluru Civic Vanguard Citation (2026)**: Annual Top 5 shortlist reviewed by an independent community review panel, alongside a **CivicTech Community Micro-Grant (Planned – aspirational, not funded in this prototype)**.
+
+### 4. Hardened Firestore Security Rules
+- Enforces zero client forgery on `users/{userId}`, `reports/{reportId}`, `public_reports/{reportId}`, and `issues/{issueId}` — preventing clients from escalating roles, forging points, mutating `status`/`aiScore`/`verifiedAt`, or deleting audit logs.
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js (App Router), React, TypeScript
+- **Styling & Motion**: Tailwind CSS v4 (Clean Light SaaS palette), `motion/react`, `lucide-react`
+- **AI & Vision**: `@google/genai` (server-side `/api/gemini` route only)
+- **Backend & Auth**: Firebase Authentication (Google Sign-In) + Cloud Firestore + Firebase Storage
+- **Image Forensics**: `exifr` (EXIF extraction) + HTML5 Canvas EXIF stripping & < 200KB compression + 64-bit perceptual hash
+
+---
+
+## Judge Mode Instructions
+
+Append `?mode=judge` to the Admin Audit Dashboard URL to open the interactive read-only **Audit Verification Preview** with pre-loaded Before-vs-After Bengaluru repair comparisons and AI Confidence Score breakdowns:
+
+```
+/admin?mode=judge
 ```
 
-Open `http://localhost:3000`.
+You can also inspect the public SHA-256 certificate verification portal directly with the demo credential:
 
-### Scripts
-- `npm run dev` — Start Next.js development server on port `3000`
-- `npm run build` — Production build (`next build`)
-- `npm run start` — Start production server on port `3000`
-- `npm run lint` — TypeScript strict check (`tsc --noEmit`)
-- `npm run test` — Run pure domain-logic unit tests (`tsx --test src/lib/civic-logic.test.ts`)
+```
+/verify/CS-BLR-2026-DEMO
+```
 
-## 2. Environment Variables
+---
 
-See `.env.example`:
-- `NEXT_PUBLIC_APP_URL` — Public site URL (e.g. `http://localhost:3000`)
-- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL (Milestone 2+)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon key (Milestone 2+)
-- `GEMINI_API_KEY` — Server-only Gemini API key (Milestone 3+; never prefix with `NEXT_PUBLIC_`)
-- `GEMINI_MODEL` — Supported multimodal Gemini model identifier (Milestone 3+, e.g. `gemini-2.5-flash`)
+## Running Locally
 
-Missing production environment variables will not break the build; the read-only `/demo` route remains fully browsable while backend-dependent routes display clear configuration/milestone notices.
-
-## 3. Vercel Deployment
-
-This repository is a standard single-project Next.js App Router codebase compatible with Vercel:
-1. Push the repository to GitHub/GitLab/Bitbucket.
-2. Import into Vercel (Framework Preset: **Next.js**).
-3. Configure environment variables for Milestones 2–3 in Vercel Project Settings.
-4. Deploy (`npm run build`).
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Copy `.env.example` to `.env.local` and configure `GEMINI_API_KEY` (server-only) and optional `NEXT_PUBLIC_ADMIN_EMAILS`.
+3. Run the unit test suite:
+   ```bash
+   npx tsx --test src/lib/civic-logic.test.ts
+   ```
+4. Start the development server on port 3000:
+   ```bash
+   npm run dev
+   ```
+5. Build for production:
+   ```bash
+   npm run build
+   ```

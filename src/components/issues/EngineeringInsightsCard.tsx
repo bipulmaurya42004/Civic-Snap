@@ -150,7 +150,7 @@ export function EngineeringInsightsCard({
             <p className="text-xs text-slate-500">
               {demoMode
                 ? "Sample civil engineering audit estimate (Demo Mode)"
-                : "CivicSnap Vision AI municipal engineering & priority audit"}
+                : "CivicSnap Vision AI civic engineering & priority audit"}
             </p>
           </div>
         </div>

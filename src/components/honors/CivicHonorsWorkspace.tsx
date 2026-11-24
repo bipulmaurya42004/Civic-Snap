@@ -12,13 +12,13 @@ import {
   Compass,
   Crown,
   FileCheck2,
-  Landmark,
   Lock,
   Medal,
   Shield,
   ShieldCheck,
   Sparkles,
   Trophy,
+  Users,
 } from "lucide-react";
 import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
 import { useAuthModal } from "@/components/AuthModal";
@@ -28,7 +28,9 @@ import {
   ANNUAL_CM_SEASON_CLOSE_LABEL,
   ANNUAL_CM_SEASON_YEAR,
   ANNUAL_CM_SUMMIT_TITLE,
+  CERTIFICATE_RECORD_LABEL,
   CM_ANNUAL_AWARD_PERKS,
+  computeCertificateSha256,
   computeCitizenHonorsSnapshot,
   DEFAULT_PREVIEW_CITYWIDE_RANK,
   DEFAULT_PREVIEW_MERIT_POINTS,
@@ -46,7 +48,7 @@ const BADGE_ICON_MAP: Record<StateCivicBadgeId, typeof Award> = {
   "state-urban-sentinel": Shield,
   "state-infrastructure-guardian": Compass,
   "national-civic-vanguard": Crown,
-  "cm-civic-laureate": Landmark,
+  "cm-civic-laureate": Users,
 };
 
 export function CivicHonorsWorkspace() {
@@ -56,8 +58,6 @@ export function CivicHonorsWorkspace() {
   const [selectedCertificate, setSelectedCertificate] =
     useState<CivicCertificateData | null>(null);
 
-  // Strict Guest Preview vs Real Logged-in User separation:
-  // Guests see interactive sample preview; signed-in users ALWAYS see their real Firestore standing.
   const isGuestPreview = !user;
 
   const honors = useMemo(() => {
@@ -92,7 +92,7 @@ export function CivicHonorsWorkspace() {
       openAuthModal({
         title: "Sign In to Report & Earn +50 Merit Points",
         message:
-          "Sign in with Google to submit AI-audited civic reports and climb the 2026 Chief Minister's Civic Champions standings.",
+          "Sign in with Google to capture live-camera civic audits and earn +50 Merit Points strictly on verified fixes (AI Confidence Score ≥ 90% + Admin approval).",
         redirectTo: "/report",
       });
       return;
@@ -101,15 +101,25 @@ export function CivicHonorsWorkspace() {
   };
 
   const openCertificateForMilestone = (milestone: CertificateMilestone) => {
+    const verifiedCount = Math.max(honors.verifiedFixes, milestone.requiredFixes);
+    const sha256Hash = computeCertificateSha256({
+      certificateId: milestone.certificateId,
+      recipientName: honors.citizenName,
+      ward: honors.ward,
+      verifiedFixes: verifiedCount,
+      meritPoints: honors.meritPoints,
+      milestoneLevel: milestone.level,
+    });
     setSelectedCertificate({
       recipientName: honors.citizenName,
       ward: honors.ward,
-      verifiedFixes: Math.max(honors.verifiedFixes, milestone.requiredFixes),
+      verifiedFixes: verifiedCount,
       milestoneLevel: milestone.level,
       milestoneTitle: milestone.title,
       certificateId: milestone.certificateId,
       issuedDate: formatCertificateIssueDate(),
       meritPoints: honors.meritPoints,
+      sha256Hash,
     });
   };
 
@@ -132,13 +142,13 @@ export function CivicHonorsWorkspace() {
                   <span>Sample Preview</span>
                 </span>
                 <span className="text-xs font-medium text-slate-500">
-                  Interactive 2026 Honors Walkthrough
+                  Interactive 2026 Vanguard Honors Walkthrough
                 </span>
               </div>
               <p className="text-sm font-semibold text-slate-900">
                 This is a Sample Preview. Sign in with Google to track your real{" "}
-                {ANNUAL_CM_SEASON_YEAR} Merit Points and unlock official State
-                Certificates.
+                {ANNUAL_CM_SEASON_YEAR} Merit Points and unlock SHA-256 Civic
+                Merit Certificates.
               </p>
               <p className="text-xs text-slate-600">
                 Previewing sample standing (750 Merit Points · 7 Verified Fixes ·
@@ -156,7 +166,7 @@ export function CivicHonorsWorkspace() {
                 openAuthModal({
                   title: "Sign In to Sync Your 2026 Civic Honors",
                   message:
-                    "Sign in with Google to replace the sample preview with your real 2026 Merit Points, verified fix count, and personalized State Certificates.",
+                    "Sign in with Google to replace the sample preview with your real 2026 Merit Points, verified fix count, and personalized SHA-256 Merit Certificates.",
                 })
               }
               className="inline-flex min-h-[44px] shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
@@ -224,7 +234,7 @@ export function CivicHonorsWorkspace() {
                     openAuthModal({
                       title: "Sign In to Sync Live Rank",
                       message:
-                        "Sign in with Google to track your personal 2026 Chief Minister's Civic Champions standing.",
+                        "Sign in with Google to track your personal 2026 Bengaluru Civic Vanguard standing.",
                     })
                   }
                   className="inline-flex min-h-[40px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
@@ -238,19 +248,19 @@ export function CivicHonorsWorkspace() {
                 className="inline-flex min-h-[40px] cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
               >
                 <Camera size={14} aria-hidden="true" />
-                <span>Report &amp; Earn +50 Merit Pts</span>
+                <span>Report &amp; Earn +50 Verified Pts</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Top 5 CM Finalist Zone Progress Bar */}
+        {/* Top 5 Vanguard Shortlist Zone Progress Bar */}
         <div className="p-6">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <p className="font-semibold text-slate-900">
               {honors.isTop5Finalist
-                ? `Qualified inside the Top 5 CM Finalist Zone for the ${ANNUAL_CM_SUMMIT_TITLE}!`
-                : `${honors.pointsToTop5.toLocaleString("en-IN")} points to enter the Top 5 CM Finalist Zone`}
+                ? `Qualified inside the Top 5 Vanguard Shortlist Zone for ${ANNUAL_CM_SUMMIT_TITLE}!`
+                : `${honors.pointsToTop5.toLocaleString("en-IN")} points to enter the Top 5 Vanguard Shortlist Zone`}
             </p>
             <span className="font-mono text-xs font-bold tabular-nums text-blue-700">
               {honors.meritPoints.toLocaleString("en-IN")} /{" "}
@@ -261,7 +271,7 @@ export function CivicHonorsWorkspace() {
           <div
             className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-100"
             role="progressbar"
-            aria-label="Progress toward Top 5 CM Finalist Zone"
+            aria-label="Progress toward Top 5 Vanguard Shortlist Zone"
             aria-valuenow={honors.top5ProgressPercent}
             aria-valuemin={0}
             aria-valuemax={100}
@@ -291,7 +301,7 @@ export function CivicHonorsWorkspace() {
               </span>
               <span aria-hidden="true">·</span>
               <span>
-                {ANNUAL_CM_SEASON_YEAR} Season Closes:{" "}
+                {ANNUAL_CM_SEASON_YEAR} Cycle Closes:{" "}
                 <strong className="font-semibold text-slate-900">
                   {ANNUAL_CM_SEASON_CLOSE_LABEL}
                 </strong>
@@ -302,7 +312,7 @@ export function CivicHonorsWorkspace() {
               href="/ward-wars"
               className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700"
             >
-              <span>View 2026 Annual CM Standings</span>
+              <span>View 2026 Vanguard Standings</span>
               <ArrowRight size={13} aria-hidden="true" />
             </Link>
           </div>
@@ -320,19 +330,19 @@ export function CivicHonorsWorkspace() {
             <div className="max-w-2xl">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-blue-700">
                 <Lock size={12} aria-hidden="true" />
-                <span>Level 1 State Certificate Progress</span>
+                <span>Level 1 Civic Merit Certificate Progress</span>
               </span>
               <h3 className="mt-2 font-[var(--font-heading)] text-lg font-bold text-slate-900">
                 Hi {honors.citizenName}, complete 5 verified reports to unlock
-                your official {ANNUAL_CM_SEASON_YEAR} State Certificate.
+                your {ANNUAL_CM_SEASON_YEAR} Civic Merit Certificate.
               </h3>
               <p className="mt-1 text-sm text-slate-600">
                 Current:{" "}
                 <strong className="font-mono font-bold text-blue-700">
                   {honors.verifiedFixes} / 5
                 </strong>{" "}
-                verified reports to unlock Level 1 State Certificate (
-                {level1Remaining}{" "}
+                verified reports (AI Confidence Score ≥ 90% + Admin approval) to
+                unlock Level 1 ({level1Remaining}{" "}
                 {level1Remaining === 1 ? "verified report" : "verified reports"}{" "}
                 remaining).
               </p>
@@ -342,7 +352,7 @@ export function CivicHonorsWorkspace() {
               className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
             >
               <Camera size={15} aria-hidden="true" />
-              <span>Submit a Verified Report</span>
+              <span>Submit a Live Report</span>
             </Link>
           </div>
         </section>
@@ -353,19 +363,19 @@ export function CivicHonorsWorkspace() {
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold tracking-wide text-blue-600">
-              Tamper-Proof 2026 Client-Side Credentials
+              SHA-256 Tamper-Evident 2026 Credentials
             </p>
             <h2 className="mt-1.5 font-[var(--font-heading)] text-2xl font-bold text-slate-900">
               Automated Digital Civic Merit Certificates ({ANNUAL_CM_SEASON_YEAR})
             </h2>
             <p className="mt-1.5 text-sm leading-6 text-slate-600">
-              Every 5 AI-verified infrastructure repairs automatically unlock a
-              signed {ANNUAL_CM_SUMMIT_TITLE} Merit Certificate with a unique{" "}
+              Every 5 verified infrastructure repairs unlock a{" "}
+              {CERTIFICATE_RECORD_LABEL} with a unique{" "}
               <span className="font-mono text-xs font-semibold text-slate-800">
                 CS-BLR-2026
               </span>{" "}
-              ID, scannable QR verification seal, and one-click LinkedIn
-              credentials.
+              ID, deterministic SHA-256 hash, scannable QR link, and LinkedIn
+              export.
             </p>
           </div>
         </div>
@@ -432,7 +442,7 @@ export function CivicHonorsWorkspace() {
                     <FileCheck2 size={20} aria-hidden="true" />
                   </div>
                   <p className="mt-2.5 text-[10px] font-bold tracking-wider text-blue-700 uppercase">
-                    {ANNUAL_CM_SUMMIT_TITLE}
+                    {CERTIFICATE_RECORD_LABEL}
                   </p>
                   <h3 className="mt-1 text-sm font-bold leading-snug text-slate-900">
                     {milestone.title}
@@ -507,33 +517,33 @@ export function CivicHonorsWorkspace() {
         </div>
       </section>
 
-      {/* State & National Badge Showcase (5 Tiers) */}
-      <section aria-label="State and National Civic Badges">
+      {/* Independent 5-Tier Civic Badge Showcase */}
+      <section aria-label="CivicSnap 5-Tier Recognition Ladder">
         <div className="max-w-2xl">
           <p className="text-xs font-semibold tracking-wide text-blue-600">
-            Official 5-Tier Recognition Ladder ({ANNUAL_CM_SEASON_YEAR})
+            5-Tier Independent Audit Recognition Ladder ({ANNUAL_CM_SEASON_YEAR})
           </p>
           <h2 className="mt-1.5 font-[var(--font-heading)] text-2xl font-bold text-slate-900">
-            State &amp; National Civic Badge Showcase
+            Bengaluru Civic Vanguard Badge Showcase
           </h2>
           <p className="mt-1.5 text-sm leading-6 text-slate-600">
-            Progress from neighborhood Ward Scout to State Urban Sentinel,
-            National Civic Vanguard, and the exclusive Chief Minister&apos;s
-            Civic Laureate podium.
+            Progress from neighborhood Ward Scout to Bengaluru Urban Sentinel,
+            Infrastructure Audit Guardian, Bengaluru Civic Vanguard, and the
+            Top 5 Civic Vanguard Laureate shortlist.
           </p>
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {honors.badges.map((badge) => {
             const Icon = BADGE_ICON_MAP[badge.id];
-            const isCmExclusive = Boolean(badge.top5Only);
+            const isShortlistExclusive = Boolean(badge.top5Only);
             return (
               <HoverCard
                 key={badge.id}
                 className={`flex flex-col justify-between p-5 ${
                   badge.unlocked
                     ? "border-blue-200 bg-white"
-                    : isCmExclusive
+                    : isShortlistExclusive
                       ? "border-amber-200/90 bg-gradient-to-b from-amber-50/40 to-white"
                       : "border-slate-200/80 bg-slate-50/70"
                 }`}
@@ -544,7 +554,7 @@ export function CivicHonorsWorkspace() {
                       className={`flex h-11 w-11 items-center justify-center rounded-xl ${
                         badge.unlocked
                           ? "bg-blue-600 text-white shadow-sm shadow-blue-600/20"
-                          : isCmExclusive
+                          : isShortlistExclusive
                             ? "bg-amber-100 text-amber-700"
                             : "bg-slate-200/80 text-slate-500"
                       }`}
@@ -558,7 +568,7 @@ export function CivicHonorsWorkspace() {
 
                   <p
                     className={`mt-4 text-[11px] font-semibold ${
-                      isCmExclusive ? "text-amber-700" : "text-blue-600"
+                      isShortlistExclusive ? "text-amber-700" : "text-blue-600"
                     }`}
                   >
                     {badge.tierScope}
@@ -580,10 +590,10 @@ export function CivicHonorsWorkspace() {
                         {badge.requirementLabel}
                       </span>
                     </span>
-                  ) : isCmExclusive ? (
+                  ) : isShortlistExclusive ? (
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800">
                       <Trophy size={13} aria-hidden="true" />
-                      <span>Exclusive to 2026 Top 5</span>
+                      <span>Top 5 Shortlist · Panel Reviewed</span>
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
@@ -601,25 +611,25 @@ export function CivicHonorsWorkspace() {
         </div>
       </section>
 
-      {/* Annual CM Summit Podium Perks Strip */}
+      {/* Annual Bengaluru Civic Vanguard Citation Strip */}
       <section
-        aria-label="Chief Minister Annual Civic Champions Award details"
+        aria-label="Bengaluru Civic Vanguard Citation details"
         className="rounded-2xl border border-amber-200/90 bg-gradient-to-br from-white via-amber-50/35 to-blue-50/40 p-6 shadow-sm sm:p-8"
       >
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
-              <Landmark size={13} aria-hidden="true" />
+              <Award size={13} aria-hidden="true" />
               <span>{ANNUAL_CM_SUMMIT_TITLE}</span>
             </div>
             <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-bold text-slate-900">
-              The Chief Minister&apos;s Annual Civic Champions Award (
-              {ANNUAL_CM_SEASON_YEAR})
+              Bengaluru Civic Vanguard Citation ({ANNUAL_CM_SEASON_YEAR})
             </h2>
             <p className="mt-1.5 text-sm leading-6 text-slate-600">
               At year-end ({ANNUAL_CM_SEASON_CLOSE_LABEL}), the Top 5 Bengaluru
-              citizens with the highest AI-verified Merit Points receive state
-              honors directly from the Hon&apos;ble Chief Minister.
+              citizens with the highest verified Merit Points are reviewed by an
+              independent community review panel for the Bengaluru Civic
+              Vanguard Citation.
             </p>
           </div>
           <Link
@@ -627,7 +637,7 @@ export function CivicHonorsWorkspace() {
             className="inline-flex min-h-[42px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
           >
             <Trophy size={15} aria-hidden="true" />
-            <span>View 2026 Annual CM Race</span>
+            <span>View 2026 Vanguard Shortlist</span>
           </Link>
         </div>
 
@@ -654,13 +664,12 @@ export function CivicHonorsWorkspace() {
           <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
             <ShieldCheck size={14} className="text-blue-600" aria-hidden="true" />
             <span>
-              Every Before-vs-After AI-verified repair logs +50 Merit Points
-              towards your 2026 Annual CM Podium ranking.
+              +50 Merit Points are awarded strictly on Admin-approved repairs
+              with an AI Confidence Score ≥ 90%.
             </span>
           </span>
           <span className="font-mono font-semibold text-amber-800">
-            2026 Annual Season Closes: {ANNUAL_CM_SEASON_CLOSE_LABEL} • Final
-            Weeks to Qualify!
+            2026 Annual Cycle Closes: {ANNUAL_CM_SEASON_CLOSE_LABEL}
           </span>
         </div>
       </section>

@@ -21,20 +21,37 @@
           "format": "email",
           "maxLength": 254
         },
+        "role": {
+          "type": "string",
+          "enum": ["citizen", "admin"],
+          "description": "User role strictly initialized to 'citizen' on creation and never client-modifiable."
+        },
         "leaderboardOptIn": {
           "type": "boolean"
         },
         "civicPoints": {
           "type": "integer",
-          "description": "Admin-awarded CivicPoints total (10 pts per Accepted report, 25 pts per Resolved report)."
+          "description": "Admin-awarded CivicPoints total (+50 strictly on Verified + Resolved + AI Confidence Score >= 90%)."
+        },
+        "points": {
+          "type": "integer",
+          "description": "Mirrored non-client-writable CivicPoints total initialized to 0."
         },
         "acceptedReportsCount": {
           "type": "integer",
           "description": "Count of admin-accepted reports credited to this user."
         },
+        "reportsCount": {
+          "type": "integer",
+          "description": "Mirrored non-client-writable report count initialized to 0."
+        },
         "resolvedReportsCount": {
           "type": "integer",
-          "description": "Count of admin-resolved reports credited to this user."
+          "description": "Count of admin-resolved verified fixes credited to this user."
+        },
+        "resolvedCount": {
+          "type": "integer",
+          "description": "Mirrored non-client-writable resolved count initialized to 0."
         },
         "createdAt": {
           "type": "string",
@@ -158,18 +175,47 @@
         },
         "pointsAwarded": {
           "type": "integer",
-          "description": "Admin-awarded CivicPoints currently credited for this report (0, 10, or 25)."
+          "description": "Admin-awarded CivicPoints currently credited for this report (0 or 50 strictly after >=90% AI Confidence Score + Admin Approval)."
         },
         "photoStoragePath": {
           "type": "string",
           "maxLength": 300
+        },
+        "imageHash": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]+$",
+          "description": "Client-computed 64-bit perceptual image hash used to block duplicate photo submissions."
+        },
+        "needsReview": {
+          "type": "boolean",
+          "description": "True when EXIF GPS mismatch (>500m), stale EXIF timestamp (>24h), or location cooldown triggers manual review."
+        },
+        "flagReasons": {
+          "type": "array",
+          "description": "Sanitized internal fraud-check reasons surfaced only to project admins (never raw EXIF data)."
+        },
+        "locationCooldownApplied": {
+          "type": "boolean",
+          "description": "True when reported within 50m of a recent report in the last 30 days (0 points eligible)."
+        },
+        "adminDecisionReason": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 300,
+          "description": "Admin moderation rationale recorded when approving or rejecting a flagged report."
+        },
+        "aiConfidenceScore": {
+          "type": "integer",
+          "description": "Gemini Vision AI Confidence Score (0-100). Must be >= 90 alongside admin approval to award +50 CivicPoints."
         },
         "beforeImageURL": {
           "type": "string",
           "minLength": 6,
           "maxLength": 2048,
           "pattern": "^(https://|/demo/).+$",
-          "description": "Firebase Storage HTTPS URL (or demo asset path) of the original civic issue photo."
+          "description": "Firebase Storage HTTPS URL (or demo asset path) of the EXIF-stripped original civic issue photo."
         },
         "afterImageURL": {
           "type": "string",
@@ -393,6 +439,15 @@
           "minLength": 3,
           "maxLength": 400
         },
+        "aiConfidenceScore": {
+          "type": "integer"
+        },
+        "imageHash": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]+$"
+        },
         "surroundingLandmarks": {
           "type": "string",
           "minLength": 2,
@@ -512,6 +567,66 @@
         "expiresAtMs",
         "createdAt"
       ]
+    },
+    "CivicIssue": {
+      "title": "CivicIssue",
+      "description": "Immutable-status citizen infrastructure issue ledger entry where clients cannot forge verification scores or statuses.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "reportedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 600
+        },
+        "ward": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Reported", "Under_AI_Verification", "Needs_Review", "Verified_Fixed", "Rejected"]
+        },
+        "aiScore": {
+          "type": "integer"
+        },
+        "imageHash": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 64,
+          "pattern": "^[0-9a-f]+$"
+        },
+        "verifiedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["reportedByUid", "title", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -541,7 +656,11 @@
     },
     "/public_reports/{reportId}": {
       "schema": { "$ref": "#/entities/PublicReport" },
-      "description": "Admin-approved safe public summaries for /issues, /dashboard, and /leaderboard."
+      "description": "Admin-approved safe public summaries for /feed, /dashboard, and /ward-wars."
+    },
+    "/issues/{issueId}": {
+      "schema": { "$ref": "#/entities/CivicIssue" },
+      "description": "Publicly readable citizen issue ledger with strict write guards preventing status or AI score forgery."
     }
   }
 }

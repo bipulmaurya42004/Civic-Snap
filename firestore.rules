@@ -66,21 +66,37 @@ service cloud.firestore {
       return url is string && url.size() >= 6 && url.size() <= 2048 && url.matches('^(https://|/demo/).+$');
     }
 
+    function isValidHexHash(h) {
+      return h is string && h.size() >= 8 && h.size() <= 64 && h.matches('^[0-9a-f]+$');
+    }
+
+    function isValidFlagReasons(reasons) {
+      return reasons is list
+        && reasons.size() <= 10
+        && (reasons.size() == 0 || (reasons[0] is string && reasons[0].size() >= 3 && reasons[0].size() <= 180));
+    }
+
     // 3. Entity Validation Blueprints (synchronized with firebase-blueprint.json)
     function isValidUserPrivateProfile(data, userId) {
       return data.keys().hasAll(['uid', 'alias', 'leaderboardOptIn', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly([
-          'uid', 'alias', 'email', 'leaderboardOptIn',
-          'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount',
+          'uid', 'alias', 'email', 'role', 'leaderboardOptIn',
+          'civicPoints', 'points',
+          'acceptedReportsCount', 'reportsCount',
+          'resolvedReportsCount', 'resolvedCount',
           'createdAt', 'updatedAt'
         ])
         && data.uid is string && data.uid == userId && isValidId(data.uid)
         && data.alias is string && data.alias.size() >= 2 && data.alias.size() <= 40
         && (!('email' in data) || (data.email is string && data.email.size() <= 254))
+        && (!('role' in data) || (data.role is string && data.role in ['citizen', 'admin']))
         && data.leaderboardOptIn is bool
         && (!('civicPoints' in data) || (data.civicPoints is int && data.civicPoints >= 0 && data.civicPoints <= 1000000))
+        && (!('points' in data) || (data.points is int && data.points >= 0 && data.points <= 1000000))
         && (!('acceptedReportsCount' in data) || (data.acceptedReportsCount is int && data.acceptedReportsCount >= 0 && data.acceptedReportsCount <= 100000))
+        && (!('reportsCount' in data) || (data.reportsCount is int && data.reportsCount >= 0 && data.reportsCount <= 100000))
         && (!('resolvedReportsCount' in data) || (data.resolvedReportsCount is int && data.resolvedReportsCount >= 0 && data.resolvedReportsCount <= 100000))
+        && (!('resolvedCount' in data) || (data.resolvedCount is int && data.resolvedCount >= 0 && data.resolvedCount <= 100000))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -131,6 +147,8 @@ service cloud.firestore {
           'id', 'reporterId', 'title', 'category', 'description',
           'locality', 'status', 'reviewState', 'publicApproved',
           'hasPhoto', 'pointsAwarded', 'photoStoragePath',
+          'imageHash', 'needsReview', 'flagReasons', 'locationCooldownApplied',
+          'adminDecisionReason', 'aiConfidenceScore',
           'beforeImageURL', 'afterImageURL', 'verificationStatus', 'verificationReason',
           'surroundingLandmarks', 'materialEstimate', 'socialImpactScore', 'economicCostOfDelay',
           'privateLat', 'privateLng', 'detectedAddress', 'highPriorityZone',
@@ -146,8 +164,14 @@ service cloud.firestore {
         && data.reviewState is string && isValidReviewState(data.reviewState)
         && data.publicApproved is bool
         && data.hasPhoto is bool
-        && (!('pointsAwarded' in data) || (data.pointsAwarded is int && data.pointsAwarded >= 0 && data.pointsAwarded <= 25))
+        && (!('pointsAwarded' in data) || (data.pointsAwarded is int && data.pointsAwarded >= 0 && data.pointsAwarded <= 50))
         && (!('photoStoragePath' in data) || (data.photoStoragePath is string && data.photoStoragePath.size() <= 300))
+        && (!('imageHash' in data) || isValidHexHash(data.imageHash))
+        && (!('needsReview' in data) || data.needsReview is bool)
+        && (!('flagReasons' in data) || isValidFlagReasons(data.flagReasons))
+        && (!('locationCooldownApplied' in data) || data.locationCooldownApplied is bool)
+        && (!('adminDecisionReason' in data) || (data.adminDecisionReason is string && data.adminDecisionReason.size() >= 2 && data.adminDecisionReason.size() <= 300))
+        && (!('aiConfidenceScore' in data) || (data.aiConfidenceScore is int && data.aiConfidenceScore >= 0 && data.aiConfidenceScore <= 100))
         && (!('beforeImageURL' in data) || isValidSafeImageUrl(data.beforeImageURL))
         && (!('afterImageURL' in data) || isValidSafeImageUrl(data.afterImageURL))
         && (!('verificationStatus' in data) || (data.verificationStatus is string && isValidVerificationStatus(data.verificationStatus)))
@@ -196,6 +220,7 @@ service cloud.firestore {
           'id', 'reporterId', 'title', 'category', 'locality',
           'status', 'reviewState', 'publicSummary', 'publicApproved',
           'beforeImageURL', 'afterImageURL', 'verificationStatus', 'verificationReason',
+          'aiConfidenceScore', 'imageHash',
           'surroundingLandmarks', 'materialEstimate', 'socialImpactScore', 'economicCostOfDelay',
           'lat', 'lng', 'detectedAddress', 'highPriorityZone',
           'eventCount', 'createdAt', 'updatedAt'
@@ -213,6 +238,8 @@ service cloud.firestore {
         && (!('afterImageURL' in data) || isValidSafeImageUrl(data.afterImageURL))
         && (!('verificationStatus' in data) || (data.verificationStatus is string && isValidVerificationStatus(data.verificationStatus)))
         && (!('verificationReason' in data) || (data.verificationReason is string && data.verificationReason.size() >= 3 && data.verificationReason.size() <= 400))
+        && (!('aiConfidenceScore' in data) || (data.aiConfidenceScore is int && data.aiConfidenceScore >= 0 && data.aiConfidenceScore <= 100))
+        && (!('imageHash' in data) || isValidHexHash(data.imageHash))
         && (!('surroundingLandmarks' in data) || (data.surroundingLandmarks is string && data.surroundingLandmarks.size() >= 2 && data.surroundingLandmarks.size() <= 200))
         && (!('materialEstimate' in data) || (data.materialEstimate is string && data.materialEstimate.size() >= 2 && data.materialEstimate.size() <= 240))
         && (!('socialImpactScore' in data) || (data.socialImpactScore is int && data.socialImpactScore >= 1 && data.socialImpactScore <= 100))
@@ -226,9 +253,28 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidCivicIssue(data, issueId) {
+      return data.keys().hasAll(['reportedByUid', 'title', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'reportedByUid', 'title', 'description', 'ward',
+          'status', 'aiScore', 'imageHash', 'verifiedAt', 'createdAt', 'updatedAt'
+        ])
+        && (!('id' in data) || (data.id is string && data.id == issueId && isValidId(data.id)))
+        && data.reportedByUid is string && isValidId(data.reportedByUid)
+        && data.title is string && data.title.size() >= 5 && data.title.size() <= 120
+        && (!('description' in data) || (data.description is string && data.description.size() >= 10 && data.description.size() <= 600))
+        && (!('ward' in data) || (data.ward is string && data.ward.size() >= 2 && data.ward.size() <= 80))
+        && data.status is string && data.status in ['Reported', 'Under_AI_Verification', 'Needs_Review', 'Verified_Fixed', 'Rejected']
+        && (!('aiScore' in data) || (data.aiScore is int && data.aiScore >= 0 && data.aiScore <= 100))
+        && (!('imageHash' in data) || isValidHexHash(data.imageHash))
+        && (!('verifiedAt' in data) || data.verifiedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // 4. Collection Rules
 
-    // Private User Profiles (PII isolated to owner or verified admin; CivicPoints increases strictly admin-only)
+    // Private User Profiles (PII isolated to owner or verified admin; role & points strictly server/admin guarded)
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
       allow list: if false;
@@ -237,9 +283,13 @@ service cloud.firestore {
         && isValidId(userId)
         && request.auth.uid == userId
         && isValidUserPrivateProfile(incoming(), userId)
+        && (!('role' in incoming()) || incoming().role == 'citizen')
         && (!('civicPoints' in incoming()) || incoming().civicPoints == 0)
+        && (!('points' in incoming()) || incoming().points == 0)
         && (!('acceptedReportsCount' in incoming()) || incoming().acceptedReportsCount == 0)
+        && (!('reportsCount' in incoming()) || incoming().reportsCount == 0)
         && (!('resolvedReportsCount' in incoming()) || incoming().resolvedReportsCount == 0)
+        && (!('resolvedCount' in incoming()) || incoming().resolvedCount == 0)
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -250,15 +300,16 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
-          // Tier 1: Project admin awarding or reconciling CivicPoints
+          // Tier 1: Project admin awarding or reconciling CivicPoints & verified fix counts
           (
             isAdmin()
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount', 'updatedAt'
+              'civicPoints', 'points', 'acceptedReportsCount', 'reportsCount',
+              'resolvedReportsCount', 'resolvedCount', 'updatedAt'
             ])
           )
           ||
-          // Tier 2: Owner editing alias or leaderboard preference only (never CivicPoints)
+          // Tier 2: Owner editing alias or leaderboard preference only (never role, points, or counts)
           (
             request.auth.uid == userId
             && incoming().diff(existing()).affectedKeys().hasOnly([
@@ -368,7 +419,7 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
-    // Private Civic Reports (owner + project admins only)
+    // Private Civic Reports (owner + project admins only; zero points on create, immutable verification fields)
     match /reports/{reportId} {
       allow get: if isSignedIn() && isValidId(reportId) && (existing().reporterId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && (existing().reporterId == request.auth.uid || isBootstrapAdmin());
@@ -385,6 +436,8 @@ service cloud.firestore {
         && !('afterImageURL' in incoming())
         && !('verificationStatus' in incoming())
         && !('verificationReason' in incoming())
+        && !('aiConfidenceScore' in incoming())
+        && !('adminDecisionReason' in incoming())
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -396,17 +449,18 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
-          // Tier 1: Project admin moderation, AI fix verification & CivicPoints award action
+          // Tier 1: Project admin moderation, flagged review queue, AI fix verification & CivicPoints award (+50 max)
           (
             isAdmin()
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'status', 'reviewState', 'publicApproved', 'duplicateOfId',
               'pointsAwarded', 'beforeImageURL', 'afterImageURL',
-              'verificationStatus', 'verificationReason', 'updatedAt'
+              'verificationStatus', 'verificationReason', 'aiConfidenceScore',
+              'needsReview', 'adminDecisionReason', 'updatedAt'
             ])
           )
           ||
-          // Tier 2: Reporter editing unreviewed, non-terminal report text only
+          // Tier 2: Reporter editing unreviewed, non-terminal report text only (never status, verification, flags, or points)
           (
             existing().reporterId == request.auth.uid
             && existing().status != 'resolved'
@@ -483,13 +537,52 @@ service cloud.firestore {
         && incoming().diff(existing()).affectedKeys().hasOnly([
           'title', 'category', 'locality', 'status', 'publicSummary',
           'publicApproved', 'beforeImageURL', 'afterImageURL',
-          'verificationStatus', 'verificationReason',
+          'verificationStatus', 'verificationReason', 'aiConfidenceScore', 'imageHash',
           'surroundingLandmarks', 'materialEstimate', 'socialImpactScore', 'economicCostOfDelay',
           'lat', 'lng', 'detectedAddress', 'highPriorityZone',
           'eventCount', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidId(reportId);
+    }
+
+    // Hardened Public Issues Ledger (Zero client forgery of status, aiScore, verifiedAt, or reportedByUid)
+    match /issues/{issueId} {
+      allow get: if isValidId(issueId);
+      allow list: if true;
+
+      allow create: if isVerified()
+        && isValidId(issueId)
+        && isValidCivicIssue(incoming(), issueId)
+        && incoming().reportedByUid == request.auth.uid
+        && incoming().status in ['Reported', 'Under_AI_Verification']
+        && !('aiScore' in incoming())
+        && !('verifiedAt' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerified()
+        && isValidId(issueId)
+        && isValidCivicIssue(incoming(), issueId)
+        && incoming().reportedByUid == existing().reportedByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'aiScore', 'verifiedAt', 'updatedAt'
+            ])
+          )
+          ||
+          (
+            existing().reportedByUid == request.auth.uid
+            && !incoming().diff(existing()).affectedKeys().hasAny(['status', 'aiScore', 'verifiedAt', 'reportedByUid'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'ward', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
     }
 
     // Connection validation probe document (denied writes, safe probe)

@@ -1,3 +1,4 @@
+import { computeSha256Hex } from "@/lib/anti-spam";
 import type {
   CertificateMilestone,
   CitizenHonorsSnapshot,
@@ -8,8 +9,13 @@ import type {
 export const ANNUAL_CM_SEASON_YEAR = 2026;
 export const ANNUAL_CM_SEASON_CLOSE_LABEL = "31st December 2026";
 export const ANNUAL_CM_SEASON_SHORT_CLOSE = "Dec 31, 2026";
-export const ANNUAL_CM_SUMMIT_TITLE = "Bengaluru Urban Governance Summit 2026";
-export const CERTIFICATE_VERIFY_BASE_URL = "https://civicsnap-ai.vercel.app/verify";
+export const ANNUAL_CM_SUMMIT_TITLE =
+  "CivicSnap Independent Community Civic Audit Cycle 2026";
+export const CERTIFICATE_HEADER_TITLE =
+  "Certificate of Civic Merit — Issued by CivicSnap (Independent Prototype)";
+export const CERTIFICATE_RECORD_LABEL = "Independent Open Civic Audit Record";
+export const CERTIFICATE_VERIFY_BASE_URL =
+  "https://civicsnap-ai.vercel.app/verify";
 export const ANNUAL_CM_TOP_5_THRESHOLD_POINTS = 1100;
 export const DEFAULT_PREVIEW_MERIT_POINTS = 750;
 export const DEFAULT_PREVIEW_VERIFIED_FIXES = 7;
@@ -17,46 +23,46 @@ export const DEFAULT_PREVIEW_CITYWIDE_RANK = 12;
 
 export const CM_HERO_SPOTLIGHT_PILLARS = [
   {
-    id: "medal",
-    title: "Official State Civic Medal",
-    subtitle: "& Citation of Honor",
+    id: "citation",
+    title: "Bengaluru Civic Vanguard Citation",
+    subtitle: "SHA-256 Verifiable Open Civic Record",
   },
   {
     id: "grant",
-    title: "State Civic Innovation Grant",
-    subtitle: "& Technology Prizes",
+    title: "CivicTech Community Micro-Grant",
+    subtitle: "(Planned – aspirational, not funded in this prototype)",
   },
   {
-    id: "warden",
-    title: "1-Year 'Honorary Civic Warden' Title",
-    subtitle: "with direct municipal escalation",
+    id: "panel",
+    title: "Independent Community Review Panel",
+    subtitle: "Top 5 Annual Shortlist with AI Confidence Score ≥ 90%",
   },
 ] as const;
 
 export const CM_ANNUAL_AWARD_PERKS = [
   {
     number: "01",
-    title: "Felicitation by the Hon'ble Chief Minister",
+    title: "Bengaluru Civic Vanguard Citation",
     description:
-      "Top 5 Bengaluru citizen stewards in 2026 are personally honored on stage at the Annual Urban Governance Summit at Vidhana Soudha.",
+      "Top 5 independent citizen auditors in the 2026 season receive a publicly verifiable Bengaluru Civic Vanguard Citation backed by a SHA-256 audit hash.",
   },
   {
     number: "02",
-    title: "Official State Civic Medal & Honors Citation",
+    title: "Open Civic Audit Ledger Recognition",
     description:
-      "Receive the State Civic Champions Medal and a signed Urban Infrastructure Stewardship Citation.",
+      "Permanent placement on the CivicSnap 2026 Vanguard Shortlist after an independent community review panel validates all high-confidence fixes.",
   },
   {
     number: "03",
-    title: "State Civic Innovation Grant & Technology Prizes",
+    title: "CivicTech Community Micro-Grant (Planned)",
     description:
-      "Awarded state-backed civic innovation grants and official recognition packages for high-impact ward monitoring.",
+      "CivicTech Community Micro-Grant (Planned – aspirational, not funded in this prototype) envisioned to support neighborhood open-data tools and civic sensors.",
   },
   {
     number: "04",
-    title: "1-Year 'Honorary Civic Warden' Appointment",
+    title: "Community Ward Coordinator Recognition",
     description:
-      "Official 12-month ward designation featuring direct municipal commissioner escalation privileges.",
+      "Featured independent contributor profile highlighting verified before-and-after infrastructure audits across Bengaluru wards.",
   },
 ] as const;
 
@@ -85,43 +91,43 @@ export const STATE_CIVIC_BADGE_DEFINITIONS: readonly BadgeDefinition[] = [
   {
     id: "state-urban-sentinel",
     level: 2,
-    title: "State Urban Sentinel",
-    tierScope: "State Level",
+    title: "Bengaluru Urban Sentinel",
+    tierScope: "City Level",
     requirementLabel: "5+ Verified Fixes",
     minVerifiedFixes: 5,
     description:
-      "Recognized state-level contributor with at least 5 AI-verified street repairs and Level 1 Merit Certificate.",
+      "Recognized citizen contributor with at least 5 AI-verified street repairs (AI Confidence Score ≥ 90%) and Level 1 Civic Merit Certificate.",
   },
   {
     id: "state-infrastructure-guardian",
     level: 3,
-    title: "State Infrastructure Guardian",
-    tierScope: "State Level",
+    title: "Infrastructure Audit Guardian",
+    tierScope: "City Level",
     requirementLabel: "15+ Verified Fixes",
     minVerifiedFixes: 15,
     description:
-      "Senior civic auditor safeguarding roads, lighting, and school/hospital corridors across Bengaluru Urban.",
+      "Senior civic auditor safeguarding roads, lighting, and school/hospital corridors across Bengaluru wards.",
   },
   {
     id: "national-civic-vanguard",
     level: 4,
-    title: "National Civic Vanguard",
-    tierScope: "National Level",
+    title: "Bengaluru Civic Vanguard",
+    tierScope: "Bengaluru Vanguard",
     requirementLabel: "30+ Verified Fixes",
     minVerifiedFixes: 30,
     description:
-      "Distinguished national civic benchmark for sustained urban accountability and verified public works.",
+      "Distinguished independent civic benchmark for sustained urban accountability and verified public works.",
   },
   {
     id: "cm-civic-laureate",
     level: 5,
-    title: "CM Civic Laureate",
-    tierScope: "Annual CM Podium",
-    requirementLabel: "Top 5 Annual Podium",
+    title: "Civic Vanguard Laureate",
+    tierScope: "Annual Vanguard Shortlist",
+    requirementLabel: "Top 5 Annual Shortlist",
     minVerifiedFixes: null,
     top5Only: true,
     description:
-      "Exclusive honor conferred upon the Top 5 annual citizen leaders invited to the Chief Minister's 2026 Summit podium.",
+      "Top 5 annual citizen auditors shortlisted for the Bengaluru Civic Vanguard Citation after independent community panel review.",
   },
 ] as const;
 
@@ -169,6 +175,26 @@ export function generateCertificateId(
 
   const suffix = milestoneLevel > 1 ? `-L${milestoneLevel}` : "";
   return `CS-BLR-${year}-${token}${suffix}`;
+}
+
+export function computeCertificateSha256(cert: {
+  certificateId: string;
+  recipientName: string;
+  ward: string;
+  verifiedFixes: number;
+  meritPoints: number;
+  milestoneLevel: number;
+}): string {
+  const canonicalPayload = [
+    "CIVICSNAP-OPEN-CIVIC-AUDIT-V1",
+    cert.certificateId.trim().toUpperCase(),
+    cert.recipientName.trim(),
+    cert.ward.trim(),
+    String(cert.verifiedFixes),
+    String(cert.meritPoints),
+    String(cert.milestoneLevel),
+  ].join("|");
+  return computeSha256Hex(canonicalPayload);
 }
 
 export function buildCertificateVerifyUrl(certificateId: string): string {
@@ -233,12 +259,12 @@ export function getStateCivicTierTitle(
   rank?: number | null
 ): string {
   if (typeof rank === "number" && rank >= 1 && rank <= 5) {
-    return "CM Civic Laureate";
+    return "Civic Vanguard Laureate";
   }
   const safeFixes = Math.max(0, Math.floor(verifiedFixes || 0));
-  if (safeFixes >= 30) return "National Civic Vanguard";
-  if (safeFixes >= 15) return "State Infrastructure Guardian";
-  if (safeFixes >= 5) return "State Urban Sentinel";
+  if (safeFixes >= 30) return "Bengaluru Civic Vanguard";
+  if (safeFixes >= 15) return "Infrastructure Audit Guardian";
+  if (safeFixes >= 5) return "Bengaluru Urban Sentinel";
   if (safeFixes >= 1) return "Ward Scout";
   return "Civic Contributor";
 }
@@ -280,26 +306,26 @@ export function buildCertificateMilestones(
     {
       level: 1,
       requiredFixes: 5,
-      title: "Official Civic Merit Certificate (Level 1: 5 Verified Fixes)",
-      subtitle: "State Urban Sentinel Commendation · Bengaluru Urban 2026",
+      title: "Civic Merit Certificate (Level 1: 5 Verified Fixes)",
+      subtitle: "Bengaluru Urban Sentinel Citation · Independent Civic Ledger 2026",
     },
     {
       level: 2,
       requiredFixes: 10,
-      title: "Official Civic Merit Certificate (Level 2: 10 Verified Fixes)",
-      subtitle: "Distinguished Ward Stewardship Citation · Bengaluru Urban 2026",
+      title: "Civic Merit Certificate (Level 2: 10 Verified Fixes)",
+      subtitle: "Distinguished Ward Stewardship Citation · Independent Civic Ledger 2026",
     },
     {
       level: 3,
       requiredFixes: 15,
-      title: "Official Civic Merit Certificate (Level 3: 15 Verified Fixes)",
-      subtitle: "State Infrastructure Guardian Honor · Bengaluru Urban 2026",
+      title: "Civic Merit Certificate (Level 3: 15 Verified Fixes)",
+      subtitle: "Infrastructure Audit Guardian Citation · Independent Civic Ledger 2026",
     },
     {
       level: 4,
       requiredFixes: 20,
-      title: "Official Civic Merit Certificate (Level 4: 20 Verified Fixes)",
-      subtitle: "Chief Minister's Summit Merit Citation · Bengaluru Urban 2026",
+      title: "Civic Merit Certificate (Level 4: 20 Verified Fixes)",
+      subtitle: "Bengaluru Civic Vanguard Citation · Independent Civic Ledger 2026",
     },
   ];
 
@@ -413,7 +439,7 @@ export function formatCertificateIssueDate(date: Date = new Date()): string {
 
 export function buildLinkedInShareText(cert: CivicCertificateData): string {
   const verifyUrl = buildCertificateVerifyUrl(cert.certificateId);
-  return `Honored to receive the official ${cert.milestoneTitle} (${cert.certificateId}) at the ${ANNUAL_CM_SUMMIT_TITLE} for verifying ${cert.verifiedFixes} public infrastructure fixes in Bengaluru Urban through CivicSnap AI Audit. Verify credential: ${verifyUrl} #CivicSnap #BengaluruUrban #CMHonors2026 #UrbanGovernance`;
+  return `Earned the ${cert.milestoneTitle} (${cert.certificateId}) on CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger for verifying ${cert.verifiedFixes} infrastructure fixes with Gemini AI Confidence Score audits. Verify independent SHA-256 record: ${verifyUrl} #CivicSnapAI #OpenCivicTech #BengaluruCivicVanguard`;
 }
 
 export function buildLinkedInAddCertificationUrl(
@@ -423,7 +449,7 @@ export function buildLinkedInAddCertificationUrl(
   const params = new URLSearchParams({
     startTask: "CERTIFICATION_NAME",
     name: cert.milestoneTitle,
-    organizationName: "Government of Karnataka / CivicSnap",
+    organizationName: "CivicSnap AI (Independent Open Civic Prototype)",
     issueYear: String(ANNUAL_CM_SEASON_YEAR),
     issueMonth: String(new Date().getMonth() + 1),
     certId: cert.certificateId,
@@ -448,7 +474,7 @@ function escapeHtml(value: string): string {
 
 /**
  * Generates a standalone print/PDF-ready HTML document for instant client-side
- * 2026 certificate download with zero backend rendering overhead.
+ * 2026 certificate download with SHA-256 cryptographic digest and zero government claims.
  */
 export function buildCertificateHtmlDocument(cert: CivicCertificateData): string {
   const safeName = escapeHtml(cert.recipientName);
@@ -457,29 +483,33 @@ export function buildCertificateHtmlDocument(cert: CivicCertificateData): string
   const safeDate = escapeHtml(cert.issuedDate);
   const safeLevel = escapeHtml(cert.milestoneTitle);
   const verifyUrl = escapeHtml(buildCertificateVerifyUrl(cert.certificateId));
+  const sha256 = escapeHtml(
+    cert.sha256Hash || computeCertificateSha256(cert)
+  );
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Certificate of Civic Merit 2026 — ${safeName} (${safeId})</title>
+  <title>${escapeHtml(CERTIFICATE_HEADER_TITLE)} — ${safeName} (${safeId})</title>
   <style>
     @page { size: landscape; margin: 12mm; }
     body { margin: 0; padding: 32px; background: #f8fafc; font-family: Georgia, "Times New Roman", serif; color: #0f172a; display: flex; justify-content: center; }
-    .frame { width: 960px; background: #ffffff; border: 6px double #b45309; padding: 40px 52px; box-sizing: border-box; position: relative; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08); }
-    .inner { border: 1.5px solid #e2e8f0; padding: 36px 44px; text-align: center; }
-    .gov { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 2.2px; color: #1d4ed8; text-transform: uppercase; }
-    .title { font-size: 36px; font-weight: 700; letter-spacing: 1.5px; color: #0f172a; margin: 16px 0 8px; }
-    .sub { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; color: #b45309; font-weight: 600; margin-bottom: 28px; }
+    .frame { width: 960px; background: #ffffff; border: 6px double #b45309; padding: 38px 48px; box-sizing: border-box; position: relative; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08); }
+    .inner { border: 1.5px solid #e2e8f0; padding: 32px 40px; text-align: center; }
+    .eyebrow { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #1d4ed8; text-transform: uppercase; }
+    .title { font-size: 28px; font-weight: 700; letter-spacing: 0.6px; color: #0f172a; margin: 14px 0 8px; }
+    .sub { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; color: #b45309; font-weight: 600; margin-bottom: 22px; }
     .present { font-size: 15px; color: #475569; margin: 0; }
-    .recipient { font-size: 34px; font-weight: 700; color: #1e3a8a; border-bottom: 2px solid #f59e0b; display: inline-block; padding: 6px 28px; margin: 14px 0 20px; }
-    .body { font-family: system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.75; color: #334155; max-width: 720px; margin: 0 auto 36px; }
-    .footer { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #e2e8f0; padding-top: 24px; font-family: system-ui, -apple-system, sans-serif; text-align: left; }
+    .recipient { font-size: 32px; font-weight: 700; color: #1e3a8a; border-bottom: 2px solid #f59e0b; display: inline-block; padding: 6px 28px; margin: 12px 0 18px; }
+    .body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.75; color: #334155; max-width: 720px; margin: 0 auto 24px; }
+    .hash-box { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; color: #0f172a; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; margin: 0 auto 24px; max-width: 760px; word-break: break-all; }
+    .footer { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #e2e8f0; padding-top: 20px; font-family: system-ui, -apple-system, sans-serif; text-align: left; }
     .meta { font-size: 12px; color: #475569; line-height: 1.6; }
     .meta strong { color: #0f172a; font-family: ui-monospace, monospace; }
-    .seal { width: 124px; height: 124px; border-radius: 999px; border: 4px double #b45309; background: radial-gradient(circle, #fef3c7, #f59e0b); color: #78350f; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 10px; letter-spacing: 0.7px; text-transform: uppercase; padding: 8px; box-sizing: border-box; }
-    .sig { text-align: right; }
-    .sig-line { font-family: Georgia, serif; font-style: italic; font-size: 20px; color: #1e3a8a; border-bottom: 1.5px solid #94a3b8; padding-bottom: 4px; margin-bottom: 6px; }
+    .seal { width: 120px; height: 120px; border-radius: 999px; border: 4px double #b45309; background: radial-gradient(circle, #fef3c7, #f59e0b); color: #78350f; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-weight: 800; font-size: 9px; letter-spacing: 0.6px; text-transform: uppercase; padding: 8px; box-sizing: border-box; }
+    .sig { text-align: right; max-width: 240px; }
+    .sig-line { font-family: Georgia, serif; font-style: italic; font-size: 18px; color: #1e3a8a; border-bottom: 1.5px solid #94a3b8; padding-bottom: 4px; margin-bottom: 6px; }
     .sig-title { font-size: 12px; font-weight: 700; color: #0f172a; }
     .sig-sub { font-size: 11px; color: #64748b; }
   </style>
@@ -487,16 +517,19 @@ export function buildCertificateHtmlDocument(cert: CivicCertificateData): string
 <body>
   <div class="frame">
     <div class="inner">
-      <div class="gov">GOVERNMENT OF KARNATAKA &bull; ${escapeHtml(ANNUAL_CM_SUMMIT_TITLE)}</div>
-      <h1 class="title">CERTIFICATE OF CIVIC MERIT</h1>
+      <div class="eyebrow">${escapeHtml(CERTIFICATE_RECORD_LABEL)} &bull; BENGALURU 2026</div>
+      <h1 class="title">${escapeHtml(CERTIFICATE_HEADER_TITLE)}</h1>
       <div class="sub">${safeLevel}</div>
-      <p class="present">This is proudly presented to</p>
+      <p class="present">This is presented to</p>
       <div class="recipient">${safeName}</div>
       <p class="body">
-        in recognition of outstanding civic stewardship and verifying
-        <strong>${cert.verifiedFixes} public infrastructure fixes</strong> in
-        Bengaluru Urban (${safeWard}), validated through CivicSnap AI Audit during the 2026 Annual Season.
+        in recognition of citizen-led public infrastructure auditing and verifying
+        <strong>${cert.verifiedFixes} civic infrastructure fixes</strong> in
+        Bengaluru (${safeWard}), validated with Gemini AI Confidence Score audits on the CivicSnap Open Civic Ledger.
       </p>
+      <div class="hash-box">
+        <strong>SHA-256 Audit Hash:</strong> ${sha256}
+      </div>
       <div class="footer">
         <div class="meta">
           <div>Certificate ID: <strong>${safeId}</strong></div>
@@ -505,13 +538,14 @@ export function buildCertificateHtmlDocument(cert: CivicCertificateData): string
           <div>Public Verification: <strong>${verifyUrl}</strong></div>
         </div>
         <div class="seal">
-          <span>Summit 2026</span>
-          <span style="margin-top:4px;font-size:9px;">CivicSnap AI Verified</span>
+          <span>Open Civic</span>
+          <span style="margin-top:4px;">SHA-256 Audit</span>
+          <span style="margin-top:2px;font-size:8px;">2026 Prototype</span>
         </div>
         <div class="sig">
-          <div class="sig-line">Urban Dev. Directorate</div>
-          <div class="sig-title">Urban Development Directorate</div>
-          <div class="sig-sub">${escapeHtml(ANNUAL_CM_SUMMIT_TITLE)}</div>
+          <div class="sig-line">CivicSnap Audit Protocol</div>
+          <div class="sig-title">${escapeHtml(CERTIFICATE_RECORD_LABEL)}</div>
+          <div class="sig-sub">Independent Citizen Prototype · Not a Government Agency</div>
         </div>
       </div>
     </div>

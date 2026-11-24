@@ -68,10 +68,10 @@ export function SiteFooter() {
               Sirf photo nahi. Follow-up bhi.
             </p>
             <p className="mt-1.5 text-sm leading-6 text-blue-100/90">
-              Civic accountability for Bengaluru wards — report in Hinglish,
-              capture live street evidence, audit contractor materials with
-              CivicSnap AI, and earn Official State Civic Honors &amp; Digital
-              Merit Certificates.
+              Citizen-driven civic accountability for Bengaluru wards — report
+              in Hinglish, capture live camera street evidence, run Gemini AI
+              Confidence Score audits, and earn Bengaluru Civic Vanguard
+              Citations.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2.5">
               {SOCIAL_LINKS.map((social) => {
@@ -164,13 +164,15 @@ export function SiteFooter() {
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-white">
-                    Independent Civic Platform Notice
+                    Independent Open Civic Prototype Disclaimer
                   </h2>
-                  <p className="mt-1.5 text-xs leading-5 text-blue-100/90">
-                    CivicSnap is an independent civic-technology prototype built
-                    for transparent neighborhood issue tracking and AI repair
-                    auditing in Bengaluru. It is not affiliated with any
-                    government authority.
+                  <p
+                    data-testid="footer-legal-disclaimer"
+                    className="mt-1.5 text-xs leading-5 text-blue-100/90"
+                  >
+                    CivicSnap is an independent citizen-driven open civic tech
+                    prototype. It is not affiliated with, nor an official agency
+                    of, the BBMP, BDA, or the Government of Karnataka.
                   </p>
                 </div>
               </div>
