@@ -31,6 +31,8 @@ import { fetchPublicReports } from "@/lib/firebase-reports";
 import { formatCivicDate, getCategoryLabel } from "@/lib/civic-logic";
 import { SafeCivicImage } from "@/components/ui/SafeCivicImage";
 import { HoverCard, PageTransition } from "@/components/ui/MotionPrimitives";
+import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
+import { useAuthModal } from "@/components/AuthModal";
 import type { IssueCategory, IssueStatus, PublicIssueRecord } from "@/types/civic";
 
 const DEFAULT_FILTERS: BengaluruFeedFilters = {
@@ -124,6 +126,8 @@ function mapFirestoreReportToFeedIssue(report: PublicIssueRecord): BengaluruFeed
 }
 
 export function BengaluruFeedClient() {
+  const { user } = useFirebaseAuth();
+  const { openAuthModal } = useAuthModal();
   const [filters, setFilters] = useState<BengaluruFeedFilters>(DEFAULT_FILTERS);
   const [liveIssues, setLiveIssues] = useState<BengaluruFeedIssue[]>([]);
   const [upvotedIds, setUpvotedIds] = useState<Record<string, boolean>>({});
@@ -206,6 +210,17 @@ export function BengaluruFeedClient() {
     filters.sort !== "newest";
 
   const toggleUpvote = (id: string) => {
+    if (!user) {
+      openAuthModal({
+        title: "Sign In to Upvote Civic Issues",
+        message:
+          "Sign in with Google to upvote and prioritize civic hazards in your Bengaluru ward.",
+        onSuccess: () => {
+          setUpvotedIds((prev) => ({ ...prev, [id]: true }));
+        },
+      });
+      return;
+    }
     setUpvotedIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
@@ -531,7 +546,8 @@ export function BengaluruFeedClient() {
                           aria-hidden="true"
                         />
                         <span>
-                          +50 Merit Points awarded towards Annual CM Standings
+                          Fixed &amp; verified • Contributed points to 2026 Annual
+                          Ward Standings
                         </span>
                       </p>
                     )}
@@ -757,7 +773,8 @@ export function BengaluruFeedClient() {
                         aria-hidden="true"
                       />
                       <span>
-                        +50 Merit Points awarded towards Annual CM Standings
+                        Fixed &amp; verified • Contributed points to 2026 Annual
+                        Ward Standings
                       </span>
                     </p>
 

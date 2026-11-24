@@ -5,6 +5,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { FirebaseAuthProvider } from "@/components/providers/FirebaseAuthProvider";
+import { AuthModalProvider } from "@/components/AuthModal";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -26,18 +27,18 @@ export const metadata: Metadata = {
     template: "%s · CivicSnap",
   },
   description:
-    "Snap. Report. Track. Turn broken roads into verified fixes across Bengaluru wards with Hinglish voice reporting, AI engineering material audits, and Official State Civic Honors.",
+    "Snap. Report. Track. Turn broken roads into verified fixes across Bengaluru wards with Hinglish voice reporting, AI engineering material audits, and Official 2026 State Civic Honors.",
   openGraph: {
     title: "CivicSnap — Snap. Report. Track.",
     description:
-      "Turn broken roads into verified fixes across Bengaluru wards with Hinglish voice reporting, AI engineering audits, and transparent fix verification.",
+      "Turn broken roads into verified fixes across Bengaluru wards and compete for the 2026 Chief Minister's Annual Civic Champions Award & State Medal.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "CivicSnap — Snap. Report. Track.",
     description:
-      "Sirf photo nahi, follow-up bhi. Report civic issues in 10 seconds with Hinglish voice and track verified repairs.",
+      "Sirf photo nahi, follow-up bhi. Report civic issues in 10 seconds with Hinglish voice, track verified repairs, and earn 2026 State Civic Honors.",
   },
 };
 
@@ -55,11 +56,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Skip to main content
         </a>
         <FirebaseAuthProvider>
-          <SiteHeader />
-          <main id="main-content" className="flex-1">
-            {children}
-          </main>
-          <SiteFooter />
+          <AuthModalProvider>
+            <SiteHeader />
+            <main id="main-content" className="flex-1">
+              {children}
+            </main>
+            <SiteFooter />
+          </AuthModalProvider>
         </FirebaseAuthProvider>
       </body>
     </html>

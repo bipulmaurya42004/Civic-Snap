@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Award,
@@ -14,21 +15,29 @@ import {
 } from "lucide-react";
 import { generateQrMatrix } from "@/lib/bengaluru-feed-data";
 import {
+  ANNUAL_CM_SUMMIT_TITLE,
   buildCertificateHtmlDocument,
+  buildCertificateVerifyUrl,
+  buildLinkedInAddCertificationUrl,
   buildLinkedInShareText,
-  buildLinkedInShareUrl,
 } from "@/lib/civic-honors";
+import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
+import { useAuthModal } from "@/components/AuthModal";
 import type { CivicCertificateData } from "@/types/civic";
 
 interface CertificateModalProps {
   certificate: CivicCertificateData | null;
+  isSamplePreview?: boolean;
   onClose: () => void;
 }
 
 export function CertificateModal({
   certificate,
+  isSamplePreview = false,
   onClose,
 }: CertificateModalProps) {
+  const { user } = useFirebaseAuth();
+  const { openAuthModal } = useAuthModal();
   const [downloadedNotice, setDownloadedNotice] = useState(false);
   const [copiedShareText, setCopiedShareText] = useState(false);
 
@@ -45,13 +54,29 @@ export function CertificateModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [certificate, onClose]);
 
-  const qrMatrix = useMemo(
-    () => (certificate ? generateQrMatrix(certificate.certificateId) : []),
+  const verifyUrl = useMemo(
+    () =>
+      certificate ? buildCertificateVerifyUrl(certificate.certificateId) : "",
     [certificate]
+  );
+
+  const qrMatrix = useMemo(
+    () => (certificate ? generateQrMatrix(verifyUrl) : []),
+    [certificate, verifyUrl]
   );
 
   const handleDownloadCertificate = () => {
     if (!certificate) return;
+    if (!user) {
+      onClose();
+      openAuthModal({
+        title: "Sign in to Download Official Certificate",
+        message:
+          "Sign in with Google to verify your identity, track your 2026 verified reports, and download your personalized Bengaluru Urban Merit Certificate.",
+        redirectTo: "/rewards",
+      });
+      return;
+    }
     const html = buildCertificateHtmlDocument(certificate);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -67,6 +92,16 @@ export function CertificateModal({
   };
 
   const handlePrintCertificate = () => {
+    if (!user) {
+      onClose();
+      openAuthModal({
+        title: "Sign in to Print Official Certificate",
+        message:
+          "Sign in with Google to print or export your official 2026 Certificate of Civic Merit.",
+        redirectTo: "/rewards",
+      });
+      return;
+    }
     if (typeof window !== "undefined" && typeof window.print === "function") {
       window.print();
     }
@@ -82,6 +117,8 @@ export function CertificateModal({
       // Clipboard may be restricted in some preview frames
     }
   };
+
+  const showSampleBadge = isSamplePreview || !user;
 
   return (
     <AnimatePresence>
@@ -113,9 +150,18 @@ export function CertificateModal({
           >
             {/* Top Utility Bar */}
             <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
-                <Award size={16} className="text-amber-600" aria-hidden="true" />
-                <span>Automated Digital Merit Credential · Bengaluru Urban</span>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-amber-800">
+                <Award
+                  size={16}
+                  className="text-amber-600"
+                  aria-hidden="true"
+                />
+                <span>{ANNUAL_CM_SUMMIT_TITLE}</span>
+                {showSampleBadge && (
+                  <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">
+                    SAMPLE PREVIEW
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -137,7 +183,7 @@ export function CertificateModal({
                 <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50/80 px-3.5 py-1 text-[11px] font-bold tracking-wider text-blue-800 uppercase">
                   <ShieldCheck size={13} aria-hidden="true" />
                   <span>
-                    GOVERNMENT OF KARNATAKA • URBAN INFRASTRUCTURE COLLABORATIVE
+                    GOVERNMENT OF KARNATAKA • {ANNUAL_CM_SUMMIT_TITLE}
                   </span>
                 </div>
 
@@ -178,16 +224,20 @@ export function CertificateModal({
                     {certificate.verifiedFixes}
                   </strong>{" "}
                   public infrastructure fixes in Bengaluru Urban (
-                  {certificate.ward}), validated through CivicSnap AI Audit.
+                  {certificate.ward}), validated through CivicSnap AI Audit in
+                  2026.
                 </p>
 
                 {/* Bottom Row: Hash + QR | Embossed Gold Seal | Directorate Signature */}
-                <div className="mt-8 grid items-end gap-6 border-t border-slate-200/90 pt-6 text-left sm:grid-cols-3">
-                  {/* Left: Unique Hash ID + Dynamic Date + QR */}
+                <div className="mt-8 grid items-end gap-5 border-t border-slate-200/90 pt-6 text-left sm:grid-cols-[1.35fr_auto_1fr]">
+                  {/* Left: Unique Hash ID + Dynamic Date + Scannable QR Link */}
                   <div className="flex items-center gap-3">
-                    <div
-                      aria-label={`Verification QR code for ${certificate.certificateId}`}
-                      className="grid shrink-0 grid-cols-9 gap-0.5 rounded-lg border border-slate-200 bg-white p-1.5"
+                    <Link
+                      href={`/verify/${encodeURIComponent(certificate.certificateId)}`}
+                      onClick={onClose}
+                      title={`Verify credential at ${verifyUrl}`}
+                      aria-label={`Open public verification page for ${certificate.certificateId}`}
+                      className="grid shrink-0 grid-cols-9 gap-0.5 rounded-lg border border-slate-200 bg-white p-1.5 transition-colors hover:border-blue-400"
                     >
                       {qrMatrix.flatMap((row, rIdx) =>
                         row.map((filled, cIdx) => (
@@ -199,24 +249,32 @@ export function CertificateModal({
                           />
                         ))
                       )}
-                    </div>
-                    <div className="min-w-0 text-[11px] leading-5 text-slate-600">
+                    </Link>
+                    <div className="text-[11px] leading-5 text-slate-600">
                       <p className="font-semibold text-slate-500">
                         Certificate ID
                       </p>
                       <p
                         data-testid="certificate-hash-id"
-                        className="truncate font-mono text-xs font-bold tabular-nums text-slate-900"
+                        className="whitespace-nowrap font-mono text-xs font-bold tabular-nums text-slate-900"
                       >
                         {certificate.certificateId}
                       </p>
-                      <p className="mt-1 text-slate-500">
+                      <p className="mt-0.5 whitespace-nowrap text-slate-500">
                         Issued: {certificate.issuedDate}
                       </p>
+                      <Link
+                        href={`/verify/${encodeURIComponent(certificate.certificateId)}`}
+                        onClick={onClose}
+                        className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap font-semibold text-blue-600 hover:underline"
+                      >
+                        <span>Verify Credential</span>
+                        <ExternalLink size={10} aria-hidden="true" />
+                      </Link>
                     </div>
                   </div>
 
-                  {/* Center: Gold Embossed CivicSnap AI Verified Seal */}
+                  {/* Center: Gold Embossed Bengaluru Urban Governance Summit 2026 Seal */}
                   <div className="flex flex-col items-center justify-center">
                     <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border-4 border-double border-amber-600 bg-gradient-to-br from-amber-100 via-amber-200 to-amber-400 p-2 text-center shadow-sm">
                       <ShieldCheck
@@ -225,10 +283,10 @@ export function CertificateModal({
                         aria-hidden="true"
                       />
                       <span className="mt-1 text-[9px] font-extrabold leading-tight tracking-wider text-amber-950 uppercase">
-                        CivicSnap AI
+                        Summit 2026
                       </span>
                       <span className="text-[8px] font-bold tracking-wide text-amber-900 uppercase">
-                        Verified Seal
+                        AI Verified
                       </span>
                     </div>
                   </div>
@@ -243,15 +301,30 @@ export function CertificateModal({
                       Urban Development Directorate
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      Bengaluru Urban · Official Digital Signatory
+                      {ANNUAL_CM_SUMMIT_TITLE}
                     </p>
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* Public Verification URL Strip */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50 px-3.5 py-2 text-[11px] text-slate-600">
+              <span className="truncate font-mono">
+                Verification URL:{" "}
+                <strong className="text-slate-800">{verifyUrl}</strong>
+              </span>
+              <Link
+                href={`/verify/${encodeURIComponent(certificate.certificateId)}`}
+                onClick={onClose}
+                className="font-semibold text-blue-600 hover:underline whitespace-nowrap"
+              >
+                Open Public Verification Page →
+              </Link>
+            </div>
+
             {/* Action Buttons Row */}
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2.5">
                 <button
                   type="button"
@@ -282,12 +355,12 @@ export function CertificateModal({
 
               <div className="flex flex-wrap items-center gap-2">
                 <a
-                  href={buildLinkedInShareUrl(certificate)}
+                  href={buildLinkedInAddCertificationUrl(certificate)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100"
                 >
-                  <span>Share on LinkedIn</span>
+                  <span>Add to LinkedIn</span>
                   <ExternalLink size={14} aria-hidden="true" />
                 </a>
 
@@ -297,11 +370,17 @@ export function CertificateModal({
                   className="inline-flex min-h-[42px] cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100"
                 >
                   {copiedShareText ? (
-                    <Check size={14} className="text-emerald-600" aria-hidden="true" />
+                    <Check
+                      size={14}
+                      className="text-emerald-600"
+                      aria-hidden="true"
+                    />
                   ) : (
                     <Copy size={14} aria-hidden="true" />
                   )}
-                  <span>{copiedShareText ? "Copied Post" : "Copy Caption"}</span>
+                  <span>
+                    {copiedShareText ? "Copied Caption" : "Copy Post"}
+                  </span>
                 </button>
               </div>
             </div>

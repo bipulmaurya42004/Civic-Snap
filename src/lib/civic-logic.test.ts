@@ -21,13 +21,19 @@ import {
   validatePhotoFileMeta,
 } from "./civic-logic";
 import {
+  ANNUAL_CM_SEASON_YEAR,
+  ANNUAL_CM_SUMMIT_TITLE,
   buildCertificateHtmlDocument,
   buildCertificateMilestones,
+  buildCertificateVerifyUrl,
+  buildLinkedInAddCertificationUrl,
   buildLinkedInShareUrl,
   CM_ANNUAL_AWARD_PERKS,
   computeCitizenHonorsSnapshot,
+  computeSeasonCountdown2026,
   evaluateStateCivicBadges,
   generateCertificateId,
+  parseCertificateId,
 } from "./civic-honors";
 import { DEMO_ISSUES, DEMO_PROFILES, DEMO_REFERENCE_DATE } from "./demo-data";
 import {
@@ -277,13 +283,47 @@ test("computeAdminReportStats calculates Total, Pending, In Progress, and Resolv
   });
 });
 
-test("State Civic Honors snapshot, 5-tier badges, automated certificates, LinkedIn share URL, and HTML export work deterministically", () => {
+test("State Civic Honors 2026 snapshot, 5-tier badges, tamper-proof IDs, verification parser, LinkedIn URLs, and HTML export work deterministically", () => {
+  assert.equal(ANNUAL_CM_SEASON_YEAR, 2026);
+  assert.equal(ANNUAL_CM_SUMMIT_TITLE, "Bengaluru Urban Governance Summit 2026");
   assert.equal(CM_ANNUAL_AWARD_PERKS.length, 4);
 
-  const certId1 = generateCertificateId("Aarav Sharma", 1, 2025);
-  const certId2 = generateCertificateId("Aarav Sharma", 1, 2025);
-  assert.equal(certId1, certId2);
-  assert.match(certId1, /^CS-BLR-2025-V\d{4}$/);
+  // Guest / Demo sample ID strictly matches CS-BLR-2026-DEMO
+  const demoId = generateCertificateId("Aarav Sharma", 1, 2026);
+  assert.equal(demoId, "CS-BLR-2026-DEMO");
+
+  // Signed-in user ID strictly matches CS-BLR-2026-${UID6}
+  const uidCertL1 = generateCertificateId("Priya Nair", 1, 2026, "ab12cd99999");
+  const uidCertL2 = generateCertificateId("Priya Nair", 2, 2026, "ab12cd99999");
+  assert.equal(uidCertL1, "CS-BLR-2026-AB12CD");
+  assert.equal(uidCertL2, "CS-BLR-2026-AB12CD-L2");
+
+  // Tamper-proof parser and public verification URL builder
+  assert.equal(
+    buildCertificateVerifyUrl(uidCertL1),
+    "https://civicsnap-ai.vercel.app/verify/CS-BLR-2026-AB12CD"
+  );
+  const parsedValid = parseCertificateId("cs-blr-2026-ab12cd-l2");
+  assert.equal(parsedValid.valid, true);
+  assert.equal(parsedValid.year, 2026);
+  assert.equal(parsedValid.token, "AB12CD");
+  assert.equal(parsedValid.milestoneLevel, 2);
+  assert.equal(parsedValid.isDemo, false);
+
+  const parsedDemo = parseCertificateId("CS-BLR-2026-DEMO");
+  assert.equal(parsedDemo.valid, true);
+  assert.equal(parsedDemo.isDemo, true);
+
+  assert.equal(parseCertificateId("INVALID-CERT-999").valid, false);
+
+  // 2026 Season Countdown
+  const countdownBefore = computeSeasonCountdown2026(new Date("2026-11-23T12:00:00+05:30"));
+  assert.equal(countdownBefore.isClosed, false);
+  assert.ok(countdownBefore.days >= 38);
+
+  const countdownAfter = computeSeasonCountdown2026(new Date("2027-01-02T00:00:00+05:30"));
+  assert.equal(countdownAfter.isClosed, true);
+  assert.equal(countdownAfter.days, 0);
 
   const snapshot = computeCitizenHonorsSnapshot({
     citizenName: "Aarav Sharma",
@@ -310,8 +350,9 @@ test("State Civic Honors snapshot, 5-tier badges, automated certificates, Linked
   const top5Badges = evaluateStateCivicBadges(28, 2);
   assert.equal(top5Badges[4].unlocked, true);
 
-  const milestones = buildCertificateMilestones("Aarav Sharma", 7, 2025);
+  const milestones = buildCertificateMilestones("Aarav Sharma", 7, 2026);
   assert.equal(milestones[0].unlocked, true);
+  assert.equal(milestones[0].certificateId, "CS-BLR-2026-DEMO");
   assert.equal(milestones[1].unlocked, false);
   assert.equal(milestones[1].completedFixes, 7);
 
@@ -321,19 +362,25 @@ test("State Civic Honors snapshot, 5-tier badges, automated certificates, Linked
     verifiedFixes: 7,
     milestoneLevel: 1,
     milestoneTitle: "Official Civic Merit Certificate (Level 1: 5 Verified Fixes)",
-    certificateId: certId1,
+    certificateId: demoId,
     issuedDate: "23 November 2026",
     meritPoints: 750,
   };
   const linkedInUrl = buildLinkedInShareUrl(sampleCert);
   assert.match(linkedInUrl, /^https:\/\/www\.linkedin\.com\/feed\/\?shareActive=true&text=/);
-  assert.ok(decodeURIComponent(linkedInUrl).includes(certId1));
+  assert.ok(decodeURIComponent(linkedInUrl).includes(demoId));
+
+  const addCertUrl = buildLinkedInAddCertificationUrl(sampleCert);
+  assert.match(addCertUrl, /^https:\/\/www\.linkedin\.com\/profile\/add\?/);
+  assert.ok(addCertUrl.includes("certId=CS-BLR-2026-DEMO"));
+  assert.ok(addCertUrl.includes("issueYear=2026"));
 
   const html = buildCertificateHtmlDocument(sampleCert);
   assert.ok(html.includes("GOVERNMENT OF KARNATAKA"));
+  assert.ok(html.includes("Bengaluru Urban Governance Summit 2026"));
   assert.ok(html.includes("CERTIFICATE OF CIVIC MERIT"));
   assert.ok(html.includes("Aarav Sharma"));
-  assert.ok(html.includes(certId1));
+  assert.ok(html.includes(demoId));
 });
 
 test("validatePhotoFileMeta supports mobile MIME types, AVIF/JFIF/octet-stream, blocks SVG/PDF, and enforces size cap", () => {

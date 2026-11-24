@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { CivicSnapLogo } from "@/components/brand/CivicSnapLogo";
 import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
+import { useAuthModal } from "@/components/AuthModal";
 
 const PRIMARY_NAV_ITEMS = [
   {
@@ -71,9 +72,24 @@ const DRAWER_PLATFORM_ITEMS = [
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const { user, displayAlias, busy, signInWithGoogle, signOutUser } =
-    useFirebaseAuth();
+  const { user, displayAlias, busy, signOutUser } = useFirebaseAuth();
+  const { openAuthModal } = useAuthModal();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const handleReportClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!user) {
+      event.preventDefault();
+      setDrawerOpen(false);
+      openAuthModal({
+        title: "Sign In to Report a Civic Issue",
+        message:
+          "Sign in with Google to submit AI-audited road, streetlight, or waste reports and earn +50 Merit Points toward the 2026 Chief Minister's Civic Honors.",
+        redirectTo: "/report",
+      });
+    } else {
+      setDrawerOpen(false);
+    }
+  };
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -182,12 +198,13 @@ export function SiteHeader() {
               </>
             ) : (
               <>
-                <Link
-                  href="/login"
-                  className="hidden lg:inline-flex min-h-[40px] items-center rounded-xl px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0 xl:text-sm"
+                <button
+                  type="button"
+                  onClick={() => openAuthModal()}
+                  className="hidden lg:inline-flex min-h-[40px] cursor-pointer items-center rounded-xl px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0 xl:text-sm"
                 >
                   Sign In
-                </Link>
+                </button>
                 <Link
                   href="/profile"
                   className="hidden lg:inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap shrink-0 xl:text-sm"
@@ -200,6 +217,7 @@ export function SiteHeader() {
 
             <Link
               href="/report"
+              onClick={handleReportClick}
               className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap shrink-0 sm:px-4 sm:text-sm"
             >
               <Camera size={15} aria-hidden="true" className="hidden sm:inline" />
@@ -378,7 +396,7 @@ export function SiteHeader() {
                 >
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
                     <Landmark size={15} className="text-amber-700" aria-hidden="true" />
-                    <span>State Civic Honors 2025</span>
+                    <span>State Civic Honors 2026</span>
                   </div>
                   <p className="mt-1.5 text-xs leading-5 text-slate-700">
                     Top 5 Bengaluru citizens are felicitated by the Hon&apos;ble
@@ -449,7 +467,7 @@ export function SiteHeader() {
                           disabled={busy}
                           onClick={() => {
                             setDrawerOpen(false);
-                            void signInWithGoogle();
+                            openAuthModal();
                           }}
                           className="flex min-h-[42px] w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50"
                         >
@@ -485,7 +503,7 @@ export function SiteHeader() {
               <div className="border-t border-slate-200/80 bg-slate-50/70 p-4">
                 <Link
                   href="/report"
-                  onClick={() => setDrawerOpen(false)}
+                  onClick={handleReportClick}
                   className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
                 >
                   <Camera size={16} aria-hidden="true" />

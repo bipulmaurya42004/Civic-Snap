@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import {
@@ -16,7 +17,9 @@ import {
   MapPin,
   Medal,
   Search,
+  ShieldCheck,
   Sparkles,
+  Timer,
   Trophy,
   Users,
 } from "lucide-react";
@@ -28,8 +31,12 @@ import {
 import {
   ANNUAL_CM_SEASON_CLOSE_LABEL,
   ANNUAL_CM_SEASON_YEAR,
+  ANNUAL_CM_SUMMIT_TITLE,
+  computeSeasonCountdown2026,
 } from "@/lib/civic-honors";
 import { db } from "@/lib/firebase";
+import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
+import { useAuthModal } from "@/components/AuthModal";
 import { HoverCard, PageTransition } from "@/components/ui/MotionPrimitives";
 
 type LeaderboardTab = "wards" | "citizens";
@@ -44,11 +51,29 @@ interface LiveOptedInProfile {
 }
 
 export function WardWarsClient() {
+  const router = useRouter();
+  const { user } = useFirebaseAuth();
+  const { openAuthModal } = useAuthModal();
   const [activeTab, setActiveTab] = useState<LeaderboardTab>("wards");
   const [search, setSearch] = useState("");
   const [citizenSearch, setCitizenSearch] = useState("");
   const [sortKey, setSortKey] = useState<WardSortKey>("resolutionRate");
   const [liveProfiles, setLiveProfiles] = useState<LiveOptedInProfile[]>([]);
+  const [countdown, setCountdown] = useState<{
+    days: number;
+    hours: number;
+    minutes: number;
+    isClosed: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const syncCountdown = () => {
+      setCountdown(computeSeasonCountdown2026(new Date()));
+    };
+    syncCountdown();
+    const timer = window.setInterval(syncCountdown, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!db) return;
@@ -127,35 +152,95 @@ export function WardWarsClient() {
 
   const citizenPodium = citizenStarsTop10.slice(0, 3);
 
+  const handleEarnPointsClick = () => {
+    if (!user) {
+      openAuthModal({
+        title: "Sign In to Enter the 2026 CM Race",
+        message:
+          "Sign in with Google to submit AI-verified reports and earn +50 Merit Points toward the Top 5 Chief Minister's Civic Champions Podium.",
+        redirectTo: "/report",
+      });
+      return;
+    }
+    router.push("/report");
+  };
+
   return (
     <PageTransition className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-      {/* Top Prestige Banner — Compete for the Annual CM Civic Champions Award */}
+      {/* Top Prestige Banner — The 2026 Chief Minister's Civic Champions Race */}
       <section
-        aria-label="Annual CM Civic Champions Award Banner"
-        className="mb-8 rounded-2xl border border-amber-300/90 bg-gradient-to-r from-amber-50/80 via-white to-blue-50/70 p-5 shadow-sm sm:p-6"
+        aria-label="2026 Chief Minister Civic Champions Race Banner"
+        className="mb-8 rounded-2xl border border-amber-300/90 bg-gradient-to-r from-amber-50/85 via-white to-blue-50/75 p-5 shadow-sm sm:p-7"
       >
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
           <div className="max-w-3xl">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/80 px-3 py-1 text-xs font-bold text-amber-900">
-              <Landmark size={13} aria-hidden="true" />
-              <span>
-                Annual Urban Governance Summit • Season Closes{" "}
-                {ANNUAL_CM_SEASON_CLOSE_LABEL}, {ANNUAL_CM_SEASON_YEAR}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-xs font-bold text-amber-900">
+                <Landmark size={13} aria-hidden="true" />
+                <span>{ANNUAL_CM_SUMMIT_TITLE}</span>
               </span>
-            </span>
-            <h1 className="mt-2.5 font-[var(--font-heading)] text-2xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Compete for the Annual CM Civic Champions Award
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                <Timer size={13} aria-hidden="true" />
+                <span>
+                  {ANNUAL_CM_SEASON_YEAR} Annual Season Closes:{" "}
+                  {ANNUAL_CM_SEASON_CLOSE_LABEL} • Final Weeks to Qualify!
+                </span>
+              </span>
+            </div>
+
+            <h1 className="mt-3 font-[var(--font-heading)] text-2xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              The 2026 Chief Minister&apos;s Civic Champions Race
             </h1>
+
             <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
               Track Bengaluru Ward Standings across Indiranagar, HSR Layout, and
-              Koramangala — or inspect the{" "}
+              Koramangala — or inspect{" "}
               <strong className="font-semibold text-slate-900">
                 Citizen Stars (Annual CM Race)
               </strong>{" "}
-              where the Top 5 stewards earn felicitation by the Hon&apos;ble
-              Chief Minister, a State Civic Medal, and a 1-year Honorary Civic
-              Warden designation.
+              where Ranks #1–#5 earn personal felicitation by the Hon&apos;ble
+              Chief Minister, an Official State Civic Medal, and a 1-Year{" "}
+              <strong className="font-semibold text-amber-900">
+                Honorary Civic Warden
+              </strong>{" "}
+              nomination.
             </p>
+
+            {/* Live Countdown to 31st December 2026 */}
+            <div
+              className="mt-4 flex flex-wrap items-center gap-2.5"
+              data-testid="season-2026-countdown"
+            >
+              <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Season Closing Countdown:
+              </span>
+              {countdown && !countdown.isClosed ? (
+                <div className="inline-flex items-center gap-2">
+                  <span className="inline-flex items-baseline gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold tabular-nums text-amber-900 shadow-2xs">
+                    <span>{countdown.days}</span>
+                    <span className="text-[10px] font-semibold text-slate-500">
+                      DAYS
+                    </span>
+                  </span>
+                  <span className="inline-flex items-baseline gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold tabular-nums text-amber-900 shadow-2xs">
+                    <span>{String(countdown.hours).padStart(2, "0")}</span>
+                    <span className="text-[10px] font-semibold text-slate-500">
+                      HRS
+                    </span>
+                  </span>
+                  <span className="inline-flex items-baseline gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold tabular-nums text-amber-900 shadow-2xs">
+                    <span>{String(countdown.minutes).padStart(2, "0")}</span>
+                    <span className="text-[10px] font-semibold text-slate-500">
+                      MINS
+                    </span>
+                  </span>
+                </div>
+              ) : (
+                <span className="inline-flex items-center rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold text-amber-900">
+                  Cutoff: {ANNUAL_CM_SEASON_CLOSE_LABEL}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2.5">
@@ -166,13 +251,14 @@ export function WardWarsClient() {
               <Award size={16} aria-hidden="true" className="text-amber-600" />
               <span>My Civic Honors</span>
             </Link>
-            <Link
-              href="/report"
-              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
+            <button
+              type="button"
+              onClick={handleEarnPointsClick}
+              className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95 whitespace-nowrap"
             >
               <Camera size={16} aria-hidden="true" />
               <span>Earn +50 Merit Pts</span>
-            </Link>
+            </button>
           </div>
         </div>
       </section>
@@ -233,15 +319,15 @@ export function WardWarsClient() {
               Citizen Stars (Annual CM Race)
             </span>
             <span className="relative z-10 rounded-full bg-amber-100 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-800">
-              Top 5 Podium
+              2026 Top 5
             </span>
           </button>
         </div>
 
         <p className="px-2 text-xs text-slate-500">
           {activeTab === "wards"
-            ? "Indiranagar vs HSR Layout vs Koramangala · Live resolution rate & speed"
-            : "Top 5 citizens qualify for the Chief Minister's Annual Civic Champions Podium"}
+            ? "Indiranagar vs HSR Layout vs Koramangala · Live 2026 resolution rate & speed"
+            : "Ranks #1–#5 earn CM Contender status & Honorary Civic Warden nomination"}
         </p>
       </div>
 
@@ -322,7 +408,7 @@ export function WardWarsClient() {
                         </div>
                         <div>
                           <p className="text-[11px] font-medium text-slate-500">
-                            Ward Merit Points
+                            2026 Ward Points
                           </p>
                           <p className="mt-0.5 flex items-center gap-1 font-mono text-base font-bold tabular-nums text-blue-700">
                             <Sparkles size={14} aria-hidden="true" />
@@ -346,7 +432,7 @@ export function WardWarsClient() {
               <div className="flex flex-col justify-between gap-3 border-b border-slate-200/80 p-4 sm:flex-row sm:items-center sm:p-5">
                 <div>
                   <h2 className="text-base font-bold text-slate-900">
-                    Ward Standings — All Bengaluru Pilot Wards
+                    Ward Standings — 2026 Bengaluru Pilot Wards
                   </h2>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Live resolution rate, repair turnaround speed, and verified
@@ -489,19 +575,20 @@ export function WardWarsClient() {
                   return (
                     <HoverCard
                       key={star.alias}
-                      className={`border-amber-300/90 bg-gradient-to-b from-amber-50/45 via-white to-white p-6 ${
+                      className={`border-amber-300/90 bg-gradient-to-b from-amber-50/55 via-white to-white p-6 ${
                         isFirst
-                          ? "shadow-md shadow-amber-500/10 ring-1 ring-amber-400/40"
-                          : ""
+                          ? "shadow-md shadow-amber-500/15 ring-1 ring-amber-400/50"
+                          : "ring-1 ring-amber-300/35"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-xs font-bold text-amber-900">
                           <Crown size={13} aria-hidden="true" />
                           <span>#{star.rank} CM Contender</span>
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
-                          {star.tierLabel}
+                          <ShieldCheck size={11} aria-hidden="true" />
+                          <span>Honorary Civic Warden Nominee</span>
                         </span>
                       </div>
 
@@ -540,7 +627,7 @@ export function WardWarsClient() {
                         </div>
                         <div>
                           <p className="text-[11px] font-medium text-slate-500">
-                            Merit Points
+                            2026 Merit Points
                           </p>
                           <p className="mt-0.5 flex items-center gap-1 font-mono text-base font-bold tabular-nums text-amber-800">
                             <Trophy size={14} aria-hidden="true" />
@@ -556,7 +643,7 @@ export function WardWarsClient() {
               </div>
             </section>
 
-            {/* Top 10 Personal Citizen Stars Table (Top 5 Highlighted with Gold/Amber Glow & CM Contender Badge) */}
+            {/* Top 10 Personal Citizen Stars Table (Top 5 Highlighted with Glowing Gold Borders, CM Contender & Honorary Civic Warden Nominee tags) */}
             <section
               aria-label="Citizen Stars Annual CM Race table"
               className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm"
@@ -570,8 +657,9 @@ export function WardWarsClient() {
                     </span>
                   </h2>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Highlighted Top 5 contenders currently qualify for
-                    felicitation by the Hon&apos;ble Chief Minister at year-end.
+                    Highlighted Ranks #1–#5 currently qualify for felicitation by
+                    the Hon&apos;ble Chief Minister and 1-Year Honorary Civic
+                    Warden appointment on {ANNUAL_CM_SEASON_CLOSE_LABEL}.
                   </p>
                 </div>
 
@@ -593,12 +681,12 @@ export function WardWarsClient() {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[740px] border-collapse text-left text-sm">
+                <table className="w-full min-w-[780px] border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold text-slate-600">
                       <th className="px-5 py-3.5">Rank</th>
                       <th className="px-5 py-3.5">Citizen &amp; Ward</th>
-                      <th className="px-5 py-3.5">Honors Status</th>
+                      <th className="px-5 py-3.5">2026 Honors Status</th>
                       <th className="px-5 py-3.5 text-right">Verified Fixes</th>
                       <th className="px-5 py-3.5 text-right">Total Points</th>
                     </tr>
@@ -616,7 +704,7 @@ export function WardWarsClient() {
                           }
                           className={
                             isTop5
-                              ? "bg-gradient-to-r from-amber-50/80 via-amber-50/35 to-white shadow-[inset_0_0_0_1px_rgba(245,158,11,0.45)] transition-colors hover:from-amber-50"
+                              ? "border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-50/90 via-amber-50/40 to-white shadow-[inset_0_0_0_1px_rgba(245,158,11,0.5)] transition-colors hover:from-amber-50"
                               : "transition-colors hover:bg-slate-50/80"
                           }
                         >
@@ -624,7 +712,7 @@ export function WardWarsClient() {
                             <span
                               className={`inline-flex h-8 w-8 items-center justify-center rounded-lg font-mono text-xs font-bold tabular-nums ${
                                 isTop5
-                                  ? "border border-amber-300 bg-amber-100 text-amber-950 shadow-xs"
+                                  ? "border border-amber-400 bg-amber-100 text-amber-950 shadow-xs"
                                   : "bg-slate-100 text-slate-700"
                               }`}
                             >
@@ -656,10 +744,16 @@ export function WardWarsClient() {
                           <td className="px-5 py-4">
                             <div className="flex flex-wrap items-center gap-1.5">
                               {isTop5 ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 shadow-xs">
-                                  <Crown size={12} aria-hidden="true" />
-                                  <span>CM Contender</span>
-                                </span>
+                                <>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 shadow-xs">
+                                    <Crown size={12} aria-hidden="true" />
+                                    <span>CM Contender</span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-800">
+                                    <ShieldCheck size={11} aria-hidden="true" />
+                                    <span>Honorary Civic Warden Nominee</span>
+                                  </span>
+                                </>
                               ) : (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                                   <Award size={11} aria-hidden="true" />
