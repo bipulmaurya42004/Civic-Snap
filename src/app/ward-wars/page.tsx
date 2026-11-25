@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { WardWarsClient } from "@/components/leaderboard/WardWarsClient";
 
 export const metadata: Metadata = {
-  title: "Ward Wars Leaderboard",
+  title:
+    "2026 Bengaluru Civic Vanguard Standings — CivicSnap AI Independent Public Infrastructure Ledger",
   description:
-    "Live Bengaluru Ward Wars leaderboard ranking Indiranagar, HSR Layout, Koramangala, Jayanagar, Malleshwaram, Whitefield, and MG Road by resolution rate and CivicPoints.",
+    "Real-time Firestore citizen rankings and dynamic Bengaluru ward standings aggregated strictly from live civic reports and verified fixes.",
 };
 
 export default function WardWarsPage() {

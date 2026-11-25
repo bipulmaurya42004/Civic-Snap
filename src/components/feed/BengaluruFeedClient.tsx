@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  Camera,
   CheckCircle2,
   Clock,
   ExternalLink,
+  LogIn,
   MapPin,
   RotateCcw,
   Search,
@@ -126,10 +128,11 @@ function mapFirestoreReportToFeedIssue(report: PublicIssueRecord): BengaluruFeed
 }
 
 export function BengaluruFeedClient() {
-  const { user } = useFirebaseAuth();
+  const { user, authReady } = useFirebaseAuth();
   const { openAuthModal } = useAuthModal();
   const [filters, setFilters] = useState<BengaluruFeedFilters>(DEFAULT_FILTERS);
   const [liveIssues, setLiveIssues] = useState<BengaluruFeedIssue[]>([]);
+  const [loadingLive, setLoadingLive] = useState(true);
   const [upvotedIds, setUpvotedIds] = useState<Record<string, boolean>>({});
   const [proofModalIssue, setProofModalIssue] =
     useState<BengaluruFeedIssue | null>(null);
@@ -147,21 +150,34 @@ export function BengaluruFeedClient() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadingLive(true);
     fetchPublicReports()
       .then((records) => {
-        if (!cancelled && records.length > 0) {
+        if (!cancelled) {
           setLiveIssues(records.map(mapFirestoreReportToFeedIssue));
         }
       })
       .catch(() => {
-        // Pre-loaded Bengaluru pilot feed remains immediately visible
+        if (!cancelled) {
+          setLiveIssues([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingLive(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // STRICT SEPARATION: Signed-in citizens ONLY see real Firestore issues (ZERO dummy data).
+  // Guests (not signed in) may see sample teaser cards strictly tagged [Demo Data].
   const allIssues = useMemo(() => {
+    if (user) {
+      return liveIssues;
+    }
     const seen = new Set<string>();
     const combined: BengaluruFeedIssue[] = [];
     for (const item of [...liveIssues, ...BENGALURU_FEED_ISSUES]) {
@@ -171,7 +187,7 @@ export function BengaluruFeedClient() {
       }
     }
     return combined;
-  }, [liveIssues]);
+  }, [liveIssues, user]);
 
   const wardOptions = useMemo(() => {
     const set = new Set<string>([
@@ -226,10 +242,52 @@ export function BengaluruFeedClient() {
 
   return (
     <PageTransition className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      {/* Guest Blue Banner — Strictly shown ONLY when not signed in */}
+      {authReady && !user && (
+        <section
+          data-testid="guest-ledger-banner"
+          aria-label="Guest sign-in notice"
+          className="mb-6 rounded-2xl border border-blue-300 bg-blue-50/90 px-5 py-4 shadow-xs"
+        >
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                <LogIn size={17} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-sm font-bold text-blue-950">
+                  Sign in to view your real-time Citizen Ledger.
+                </p>
+                <p className="text-xs text-blue-800">
+                  Sample cards below are labeled [Demo Data] for guest visitors.
+                  Sign in with Google to view 100% live Firestore reports only.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                openAuthModal({
+                  title: "Sign In to View Your Citizen Ledger",
+                  message:
+                    "Sign in with Google to inspect live Firestore public reports without sample placeholders.",
+                })
+              }
+              className="inline-flex min-h-[40px] shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 whitespace-nowrap"
+            >
+              <LogIn size={14} aria-hidden="true" />
+              <span>Sign In with Google</span>
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* Header */}
       <div className="max-w-3xl">
         <p className="text-xs font-semibold tracking-wide text-blue-600">
-          Bengaluru Pilot • Public issue tracker
+          {user
+            ? "100% Live Firestore Public Ledger"
+            : "Bengaluru Pilot • Public issue tracker"}
         </p>
         <h1 className="mt-2 font-[var(--font-heading)] text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
           Explore public civic reports
@@ -404,22 +462,44 @@ export function BengaluruFeedClient() {
       </section>
 
       {/* Feed Cards Grid */}
-      {filteredIssues.length === 0 ? (
+      {loadingLive && user ? (
         <div className="mt-8 rounded-2xl border border-slate-200/90 bg-white px-6 py-12 text-center shadow-sm">
+          <p className="text-sm font-medium text-slate-600">
+            Loading live Firestore public civic reports...
+          </p>
+        </div>
+      ) : filteredIssues.length === 0 ? (
+        <div
+          data-testid="empty-feed-state"
+          className="mt-8 rounded-2xl border border-slate-200/90 bg-white px-6 py-12 text-center shadow-sm"
+        >
           <h2 className="text-base font-semibold text-slate-900">
-            No Bengaluru reports match those filters
+            {allIssues.length === 0
+              ? "No public civic issues audited yet."
+              : "No Bengaluru reports match those filters"}
           </h2>
           <p className="mt-1.5 text-sm text-slate-600">
-            Clear your search query or switch ward/category filters to view all
-            active civic reports.
+            {allIssues.length === 0
+              ? "This feed displays strictly live Firestore civic reports for signed-in citizens. Capture the first street pothole, broken streetlight, or waste pile to populate the public ledger!"
+              : "Clear your search query or switch ward/category filters to view all active civic reports."}
           </p>
-          <button
-            type="button"
-            onClick={() => setFilters(DEFAULT_FILTERS)}
-            className="mt-4 inline-flex min-h-[42px] cursor-pointer items-center justify-center rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
-          >
-            Reset all filters
-          </button>
+          {allIssues.length === 0 ? (
+            <Link
+              href="/report"
+              className="mt-4 inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700"
+            >
+              <Camera size={15} aria-hidden="true" />
+              <span>Report First Civic Issue</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setFilters(DEFAULT_FILTERS)}
+              className="mt-4 inline-flex min-h-[42px] cursor-pointer items-center justify-center rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-95"
+            >
+              Reset all filters
+            </button>
+          )}
         </div>
       ) : (
         <div className="mt-7 grid gap-6 md:grid-cols-2">
@@ -462,6 +542,11 @@ export function BengaluruFeedClient() {
                   <div>
                     {/* Status + Priority Badges */}
                     <div className="flex flex-wrap items-center gap-2">
+                      {!issue.isLiveFirestore && (
+                        <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">
+                          [Demo Data]
+                        </span>
+                      )}
                       <span
                         className={`inline-flex items-center gap-1.5 ${statusMeta.badgeClass}`}
                       >

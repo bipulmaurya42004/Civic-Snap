@@ -4,152 +4,325 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { collection, getDocs, query, where } from "firebase/firestore";
 import {
+  collection,
+  getDocs,
+  limit,
+  query,
+  where,
+} from "firebase/firestore";
+import {
+  AlertCircle,
   ArrowUpDown,
   Award,
   Building2,
   Camera,
   CheckCircle2,
-  Clock,
   Crown,
+  LogIn,
   MapPin,
   Medal,
   Search,
   ShieldCheck,
   Sparkles,
-  Timer,
   Trophy,
   Users,
 } from "lucide-react";
 import {
-  buildCitizenStarsLeaderboard,
-  WARD_WARS_STANDINGS,
-  type CitizenStarEntry,
-} from "@/lib/bengaluru-feed-data";
-import {
-  ANNUAL_CM_SEASON_CLOSE_LABEL,
   ANNUAL_CM_SEASON_YEAR,
   ANNUAL_CM_SUMMIT_TITLE,
-  computeSeasonCountdown2026,
 } from "@/lib/civic-honors";
+import {
+  aggregateLiveWardStandings,
+  buildLiveCitizenLeaderboard,
+  computeDynamicTop5Standing,
+  type LiveWardSortKey,
+  type RawFirestoreCitizenProfile,
+  type RawFirestoreIssueForWard,
+} from "@/lib/leaderboard-logic";
 import { db } from "@/lib/firebase";
+import {
+  fetchUserProfile,
+  syncUserProfileOnSignIn,
+} from "@/lib/firebase-users";
 import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
 import { useAuthModal } from "@/components/AuthModal";
 import { HoverCard, PageTransition } from "@/components/ui/MotionPrimitives";
+import { LoadingState } from "@/components/ui/StateViews";
 
-type LeaderboardTab = "wards" | "citizens";
-type WardSortKey = "resolutionRate" | "avgFixHours" | "civicPoints";
-
-interface LiveOptedInProfile {
-  alias: string;
-  civicPoints?: number;
-  acceptedReportsCount?: number;
-  resolvedReportsCount?: number;
-  leaderboardOptIn?: boolean;
-}
+type LeaderboardTab = "citizens" | "wards";
 
 export function WardWarsClient() {
   const router = useRouter();
-  const { user } = useFirebaseAuth();
+  const { user, authReady } = useFirebaseAuth();
   const { openAuthModal } = useAuthModal();
-  const [activeTab, setActiveTab] = useState<LeaderboardTab>("wards");
-  const [search, setSearch] = useState("");
+
+  // Tab 1 (Top Citizens / Vanguard Hall of Fame) is ALWAYS the default active tab
+  const [activeTab, setActiveTab] = useState<LeaderboardTab>("citizens");
   const [citizenSearch, setCitizenSearch] = useState("");
-  const [sortKey, setSortKey] = useState<WardSortKey>("resolutionRate");
-  const [liveProfiles, setLiveProfiles] = useState<LiveOptedInProfile[]>([]);
-  const [countdown, setCountdown] = useState<{
-    days: number;
-    hours: number;
-    minutes: number;
-    isClosed: boolean;
-  } | null>(null);
+  const [wardSearch, setWardSearch] = useState("");
+  const [wardSortKey, setWardSortKey] = useState<LiveWardSortKey>("wardPoints");
 
-  useEffect(() => {
-    const syncCountdown = () => {
-      setCountdown(computeSeasonCountdown2026(new Date()));
-    };
-    syncCountdown();
-    const timer = window.setInterval(syncCountdown, 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const [publicProfiles, setPublicProfiles] = useState<
+    RawFirestoreCitizenProfile[]
+  >([]);
+  const [currentUserProfile, setCurrentUserProfile] =
+    useState<RawFirestoreCitizenProfile | null>(null);
+  const [liveIssues, setLiveIssues] = useState<RawFirestoreIssueForWard[]>([]);
 
+  const [loadingCitizens, setLoadingCitizens] = useState(true);
+  const [loadingWards, setLoadingWards] = useState(true);
+  const [citizenError, setCitizenError] = useState<string | null>(null);
+  const [wardError, setWardError] = useState<string | null>(null);
+
+  // 1. Fetch REAL citizens strictly from Firestore (zero mock arrays)
   useEffect(() => {
-    if (!db) return;
+    if (!authReady) return;
+    if (!db) {
+      setLoadingCitizens(false);
+      return;
+    }
+
     let cancelled = false;
-    const q = query(
-      collection(db, "public_profiles"),
-      where("leaderboardOptIn", "==", true)
-    );
-    getDocs(q)
-      .then((snap) => {
-        if (cancelled) return;
-        const parsed: LiveOptedInProfile[] = snap.docs.map((docSnap) => {
+    setLoadingCitizens(true);
+    setCitizenError(null);
+
+    async function loadRealCitizens() {
+      if (!db) return;
+      try {
+        // Fetch public zero-PII leaderboard profiles from Firestore
+        const profilesQuery = query(
+          collection(db, "public_profiles"),
+          where("leaderboardOptIn", "==", true),
+          limit(100)
+        );
+        const snap = await getDocs(profilesQuery);
+        const fetchedProfiles: RawFirestoreCitizenProfile[] = snap.docs.map(
+          (docSnap) => {
+            const data = docSnap.data();
+            return {
+              uid: String(data.uid ?? docSnap.id),
+              displayName:
+                typeof data.displayName === "string"
+                  ? data.displayName
+                  : undefined,
+              alias: typeof data.alias === "string" ? data.alias : undefined,
+              photoURL:
+                typeof data.photoURL === "string" ? data.photoURL : undefined,
+              points: typeof data.points === "number" ? data.points : undefined,
+              civicPoints:
+                typeof data.civicPoints === "number"
+                  ? data.civicPoints
+                  : undefined,
+              resolvedCount:
+                typeof data.resolvedCount === "number"
+                  ? data.resolvedCount
+                  : undefined,
+              resolvedReportsCount:
+                typeof data.resolvedReportsCount === "number"
+                  ? data.resolvedReportsCount
+                  : undefined,
+              reportsCount:
+                typeof data.reportsCount === "number"
+                  ? data.reportsCount
+                  : undefined,
+              acceptedReportsCount:
+                typeof data.acceptedReportsCount === "number"
+                  ? data.acceptedReportsCount
+                  : undefined,
+            };
+          }
+        );
+
+        // If a real user is signed in, read (or initialize at 0 pts) their own users/{uid} doc
+        let ownProfile: RawFirestoreCitizenProfile | null = null;
+        if (user) {
+          let stored = await fetchUserProfile(user.uid);
+          if (!stored) {
+            stored = await syncUserProfileOnSignIn(user, {
+              preferredAlias: user.displayName ?? undefined,
+              leaderboardOptIn: true,
+            });
+          }
+          if (stored) {
+            ownProfile = {
+              uid: stored.uid,
+              displayName:
+                stored.displayName || user.displayName || stored.alias,
+              alias: stored.alias,
+              photoURL: stored.photoURL || user.photoURL || "",
+              points: stored.points,
+              civicPoints: stored.civicPoints,
+              resolvedCount: stored.resolvedCount,
+              resolvedReportsCount: stored.resolvedReportsCount,
+              reportsCount: stored.reportsCount,
+              acceptedReportsCount: stored.acceptedReportsCount,
+            };
+          } else {
+            ownProfile = {
+              uid: user.uid,
+              displayName: user.displayName || "Bengaluru Citizen",
+              alias: user.displayName || "Bengaluru Citizen",
+              photoURL: user.photoURL || "",
+              points: 0,
+              civicPoints: 0,
+              resolvedCount: 0,
+              resolvedReportsCount: 0,
+              reportsCount: 0,
+              acceptedReportsCount: 0,
+            };
+          }
+        }
+
+        if (!cancelled) {
+          setPublicProfiles(fetchedProfiles);
+          setCurrentUserProfile(ownProfile);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCitizenError(
+            err instanceof Error
+              ? err.message
+              : "Could not load live citizen standings from Firestore."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingCitizens(false);
+        }
+      }
+    }
+
+    void loadRealCitizens();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, user]);
+
+  // 2. Fetch REAL issues strictly from Firestore `issues` & `public_reports` for Ward Standings
+  useEffect(() => {
+    if (!db) {
+      setLoadingWards(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingWards(true);
+    setWardError(null);
+
+    async function loadRealIssuesForWards() {
+      if (!db) return;
+      try {
+        const [issuesSnap, publicReportsSnap] = await Promise.all([
+          getDocs(query(collection(db, "issues"), limit(500))),
+          getDocs(
+            query(
+              collection(db, "public_reports"),
+              where("publicApproved", "==", true),
+              limit(500)
+            )
+          ),
+        ]);
+
+        const combined: RawFirestoreIssueForWard[] = [];
+
+        for (const docSnap of issuesSnap.docs) {
           const data = docSnap.data();
-          return {
-            alias: String(data.alias ?? ""),
-            civicPoints:
-              typeof data.civicPoints === "number" ? data.civicPoints : 0,
-            acceptedReportsCount:
-              typeof data.acceptedReportsCount === "number"
-                ? data.acceptedReportsCount
-                : 0,
-            resolvedReportsCount:
-              typeof data.resolvedReportsCount === "number"
-                ? data.resolvedReportsCount
-                : 0,
-            leaderboardOptIn: Boolean(data.leaderboardOptIn),
-          };
-        });
-        setLiveProfiles(parsed);
-      })
-      .catch(() => {
-        // Pre-loaded Bengaluru Citizen Stars Top 10 remains immediately visible
-      });
+          combined.push({
+            id: String(data.id ?? docSnap.id),
+            ward: typeof data.ward === "string" ? data.ward : undefined,
+            locality:
+              typeof data.locality === "string" ? data.locality : undefined,
+            status: typeof data.status === "string" ? data.status : undefined,
+          });
+        }
+
+        for (const docSnap of publicReportsSnap.docs) {
+          const data = docSnap.data();
+          combined.push({
+            id: String(data.id ?? docSnap.id),
+            ward: typeof data.ward === "string" ? data.ward : undefined,
+            locality:
+              typeof data.locality === "string" ? data.locality : undefined,
+            status: typeof data.status === "string" ? data.status : undefined,
+          });
+        }
+
+        if (!cancelled) {
+          setLiveIssues(combined);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setWardError(
+            err instanceof Error
+              ? err.message
+              : "Could not load live ward issues from Firestore."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingWards(false);
+        }
+      }
+    }
+
+    void loadRealIssuesForWards();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const podium = WARD_WARS_STANDINGS.slice(0, 3);
+  const { entries: liveCitizens, hasAnyVerifiedFixes } = useMemo(
+    () => buildLiveCitizenLeaderboard(publicProfiles, currentUserProfile, 20),
+    [publicProfiles, currentUserProfile]
+  );
 
-  const sortedStandings = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = WARD_WARS_STANDINGS.filter(
-      (row) =>
-        !q ||
-        row.ward.toLowerCase().includes(q) ||
-        row.zone.toLowerCase().includes(q) ||
-        row.topColony.toLowerCase().includes(q)
-    );
-    return [...filtered].sort((a, b) => {
-      if (sortKey === "avgFixHours") {
-        return a.avgFixHours - b.avgFixHours;
-      }
-      if (sortKey === "civicPoints") {
-        return b.civicPoints - a.civicPoints;
-      }
-      return b.resolutionRate - a.resolutionRate;
-    });
-  }, [search, sortKey]);
-
-  const citizenStarsTop10: CitizenStarEntry[] = useMemo(
-    () => buildCitizenStarsLeaderboard(liveProfiles),
-    [liveProfiles]
+  const dynamicTop5Standing = useMemo(
+    () => computeDynamicTop5Standing(publicProfiles, currentUserProfile),
+    [publicProfiles, currentUserProfile]
   );
 
   const filteredCitizens = useMemo(() => {
     const q = citizenSearch.trim().toLowerCase();
-    if (!q) return citizenStarsTop10;
-    return citizenStarsTop10.filter(
+    if (!q) return liveCitizens;
+    return liveCitizens.filter(
       (entry) =>
+        entry.displayName.toLowerCase().includes(q) ||
         entry.alias.toLowerCase().includes(q) ||
-        entry.ward.toLowerCase().includes(q) ||
-        entry.specialty.toLowerCase().includes(q)
+        entry.tierLabel.toLowerCase().includes(q)
     );
-  }, [citizenStarsTop10, citizenSearch]);
+  }, [liveCitizens, citizenSearch]);
 
-  const citizenPodium = citizenStarsTop10.slice(0, 3);
+  const citizenPodium = useMemo(
+    () => liveCitizens.filter((c) => c.points > 0).slice(0, 3),
+    [liveCitizens]
+  );
+
+  const wardStandings = useMemo(
+    () => aggregateLiveWardStandings(liveIssues, wardSortKey),
+    [liveIssues, wardSortKey]
+  );
+
+  const filteredWards = useMemo(() => {
+    const q = wardSearch.trim().toLowerCase();
+    if (!q) return wardStandings;
+    return wardStandings.filter(
+      (row) =>
+        row.ward.toLowerCase().includes(q) ||
+        row.zone.toLowerCase().includes(q) ||
+        row.topColony.toLowerCase().includes(q)
+    );
+  }, [wardStandings, wardSearch]);
+
+  const totalCityReports = useMemo(
+    () => wardStandings.reduce((acc, w) => acc + w.totalReports, 0),
+    [wardStandings]
+  );
+  const totalCityVerifiedFixes = useMemo(
+    () => wardStandings.reduce((acc, w) => acc + w.verifiedFixes, 0),
+    [wardStandings]
+  );
+  const totalCityWardPoints = totalCityVerifiedFixes * 50;
 
   const handleEarnPointsClick = () => {
     if (!user) {
@@ -166,96 +339,123 @@ export function WardWarsClient() {
 
   return (
     <PageTransition className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-      {/* Top Banner — 2026 Bengaluru Civic Vanguard Standings */}
+      {/* Guest Blue Banner — Strictly shown ONLY when not signed in */}
+      {authReady && !user && (
+        <section
+          data-testid="guest-ledger-banner"
+          aria-label="Guest sign-in notice"
+          className="mb-6 rounded-2xl border border-blue-300 bg-blue-50/90 px-5 py-4 shadow-xs"
+        >
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                <LogIn size={17} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-sm font-bold text-blue-950">
+                  Sign in to view your real-time Citizen Ledger.
+                </p>
+                <p className="text-xs text-blue-800">
+                  Sign in with Google to track your live Firestore rank, real
+                  Merit Points, and verified street fixes.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                openAuthModal({
+                  title: "Sign In to View Your Citizen Ledger",
+                  message:
+                    "Sign in with Google to see your real-time Firestore points, rank, and verified fixes.",
+                })
+              }
+              className="inline-flex min-h-[40px] shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 whitespace-nowrap"
+            >
+              <LogIn size={14} aria-hidden="true" />
+              <span>Sign In with Google</span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Top Banner — Bengaluru Civic Vanguard Standings (100% Live Firestore) */}
       <section
-        aria-label="2026 Bengaluru Civic Vanguard Standings Banner"
+        aria-label="Bengaluru Civic Vanguard Standings Banner"
         className="mb-8 rounded-2xl border border-amber-300/90 bg-gradient-to-r from-amber-50/85 via-white to-blue-50/75 p-5 shadow-sm sm:p-7"
       >
         <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+                <ShieldCheck size={13} aria-hidden="true" />
+                <span>100% Live Firestore Ledger</span>
+              </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-xs font-bold text-amber-900">
                 <Award size={13} aria-hidden="true" />
                 <span>{ANNUAL_CM_SUMMIT_TITLE}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">
-                <Timer size={13} aria-hidden="true" />
-                <span>
-                  {ANNUAL_CM_SEASON_YEAR} Annual Cycle Closes:{" "}
-                  {ANNUAL_CM_SEASON_CLOSE_LABEL}
-                </span>
-              </span>
             </div>
 
             <h1 className="mt-3 font-[var(--font-heading)] text-2xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              2026 Bengaluru Civic Vanguard Standings
+              {ANNUAL_CM_SEASON_YEAR} Bengaluru Civic Vanguard Standings
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-              Track Bengaluru Ward Standings across Indiranagar, HSR Layout, and
-              Koramangala — or inspect the{" "}
-              <strong className="font-semibold text-slate-900">
-                2026 Vanguard Hall of Fame
-              </strong>{" "}
-              where Ranks #1–#5 qualify for the{" "}
+              Real-time citizen rankings and dynamic ward standings computed
+              strictly from live Firestore records — zero placeholder numbers.
+              Top 5 citizens with verified fixes enter the{" "}
               <strong className="font-semibold text-amber-900">
                 Bengaluru Civic Vanguard Citation
               </strong>{" "}
-              and planned CivicTech Community Micro-Grant (aspirational, not
-              funded in this prototype).
+              shortlist (CivicTech Community Micro-Grant: Planned –
+              aspirational, not funded in this prototype).
             </p>
 
-            {/* Independent Panel Review Note */}
+            {/* Live Dynamic Top 5 Cutoff & Pioneer Verifier Zone Strip */}
             <div
-              data-testid="panel-review-notice"
-              className="mt-3.5 flex items-start gap-2 rounded-xl border border-blue-200/80 bg-blue-50/70 px-3.5 py-2.5 text-xs leading-5 text-blue-950"
+              data-testid="dynamic-top5-cutoff-strip"
+              className="mt-3.5 flex flex-wrap items-center gap-2.5 rounded-xl border border-blue-200/80 bg-blue-50/70 px-3.5 py-2.5 text-xs leading-5 text-blue-950"
             >
-              <ShieldCheck
+              <Sparkles
                 size={15}
-                className="mt-0.5 shrink-0 text-blue-600"
+                className="shrink-0 text-blue-600"
                 aria-hidden="true"
               />
-              <span>
-                <strong>Independent Panel Review:</strong> All Bengaluru Civic
-                Vanguard shortlist winners are audited and reviewed by an
-                independent community review panel. Only verified repairs (AI
-                Confidence Score ≥ 90% + Admin approval) count toward annual
-                standings.
-              </span>
-            </div>
-
-            {/* Live Countdown to 31st December 2026 */}
-            <div
-              className="mt-4 flex flex-wrap items-center gap-2.5"
-              data-testid="season-2026-countdown"
-            >
-              <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                Season Closing Countdown:
-              </span>
-              {countdown && !countdown.isClosed ? (
-                <div className="inline-flex items-center gap-2">
-                  <span className="inline-flex items-baseline gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold tabular-nums text-amber-900 shadow-2xs">
-                    <span>{countdown.days}</span>
-                    <span className="text-[10px] font-semibold text-slate-500">
-                      DAYS
-                    </span>
+              {dynamicTop5Standing.isPioneerZone ? (
+                <span>
+                  <strong>
+                    Pioneer Verifier Zone — Log your first verified fix to claim
+                    a Top 5 spot!
+                  </strong>{" "}
+                  <span className="font-mono font-bold text-blue-800">
+                    (Top 5 Cutoff: 0 pts)
                   </span>
-                  <span className="inline-flex items-baseline gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold tabular-nums text-amber-900 shadow-2xs">
-                    <span>{String(countdown.hours).padStart(2, "0")}</span>
-                    <span className="text-[10px] font-semibold text-slate-500">
-                      HRS
-                    </span>
-                  </span>
-                  <span className="inline-flex items-baseline gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold tabular-nums text-amber-900 shadow-2xs">
-                    <span>{String(countdown.minutes).padStart(2, "0")}</span>
-                    <span className="text-[10px] font-semibold text-slate-500">
-                      MINS
-                    </span>
-                  </span>
-                </div>
+                </span>
               ) : (
-                <span className="inline-flex items-center rounded-lg border border-amber-200 bg-white px-2.5 py-1 font-mono text-xs font-bold text-amber-900">
-                  Cutoff: {ANNUAL_CM_SEASON_CLOSE_LABEL}
+                <span>
+                  <strong>Live Top 5 Cutoff:</strong>{" "}
+                  <span className="font-mono font-bold text-blue-800">
+                    {dynamicTop5Standing.top5CutoffPoints.toLocaleString("en-IN")}{" "}
+                    pts
+                  </span>{" "}
+                  computed dynamically from{" "}
+                  {dynamicTop5Standing.rankedCitizensCount} ranked citizens in
+                  Firestore.
+                </span>
+              )}
+              {user && currentUserProfile && (
+                <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-2.5 py-0.5 font-mono text-[11px] font-bold text-slate-900">
+                  <span>Your Rank: {dynamicTop5Standing.userRankLabel}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>
+                    {(
+                      currentUserProfile.points ??
+                      currentUserProfile.civicPoints ??
+                      0
+                    ).toLocaleString("en-IN")}{" "}
+                    pts
+                  </span>
                 </span>
               )}
             </div>
@@ -281,13 +481,41 @@ export function WardWarsClient() {
         </div>
       </section>
 
-      {/* Two-Tab Switcher: Ward Standings vs 2026 Vanguard Hall of Fame */}
+      {/* Two-Tab Switcher: Tab 1 = Top Citizens (DEFAULT ACTIVE), Tab 2 = Ward Standings */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-2.5 shadow-sm">
         <div
           role="tablist"
           aria-label="Leaderboard view switcher"
           className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-100/90 p-1"
         >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "citizens"}
+            onClick={() => setActiveTab("citizens")}
+            className={`relative inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+              activeTab === "citizens"
+                ? "text-amber-800"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            {activeTab === "citizens" && (
+              <motion.span
+                layoutId="leaderboardTabPill"
+                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                className="absolute inset-0 rounded-lg bg-white shadow-xs"
+              />
+            )}
+            <Users
+              size={15}
+              className="relative z-10 text-amber-600"
+              aria-hidden="true"
+            />
+            <span className="relative z-10">
+              Top Citizens (Vanguard Hall of Fame)
+            </span>
+          </button>
+
           <button
             type="button"
             role="tab"
@@ -309,46 +537,382 @@ export function WardWarsClient() {
             <Building2 size={15} className="relative z-10" aria-hidden="true" />
             <span className="relative z-10">Ward Standings</span>
           </button>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "citizens"}
-            onClick={() => setActiveTab("citizens")}
-            className={`relative inline-flex min-h-[40px] cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              activeTab === "citizens"
-                ? "text-amber-800"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            {activeTab === "citizens" && (
-              <motion.span
-                layoutId="leaderboardTabPill"
-                transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                className="absolute inset-0 rounded-lg bg-white shadow-xs"
-              />
-            )}
-            <Crown
-              size={15}
-              className="relative z-10 text-amber-600"
-              aria-hidden="true"
-            />
-            <span className="relative z-10">2026 Vanguard Hall of Fame</span>
-            <span className="relative z-10 rounded-full bg-amber-100 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-800">
-              Top 5 Shortlist
-            </span>
-          </button>
         </div>
 
         <p className="px-2 text-xs text-slate-500">
-          {activeTab === "wards"
-            ? "Indiranagar vs HSR Layout vs Koramangala · Live 2026 resolution rate & speed"
-            : "Ranks #1–#5 enter the Bengaluru Civic Vanguard Citation shortlist (independent panel reviewed)"}
+          {activeTab === "citizens"
+            ? "Live Firestore citizen leaderboard ordered by verified Merit Points"
+            : "Dynamically aggregated from live Firestore issues (Verified Fixes × 50 Ward Points)"}
         </p>
       </div>
 
       <AnimatePresence mode="wait">
-        {activeTab === "wards" ? (
+        {activeTab === "citizens" ? (
+          <motion.div
+            key="citizen-hall-panel"
+            role="tabpanel"
+            aria-label="Top Citizens (Vanguard Hall of Fame)"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="mt-7 space-y-6"
+          >
+            {citizenError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              >
+                <AlertCircle
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{citizenError}</span>
+              </div>
+            )}
+
+            {loadingCitizens ? (
+              <LoadingState
+                label="Loading live citizen standings from Firestore..."
+                rows={3}
+              />
+            ) : (
+              <>
+                {/* Real Zero-State Banner when no verified fixes exist yet in 2026 */}
+                {!hasAnyVerifiedFixes && (
+                  <section
+                    data-testid="citizens-zero-state-banner"
+                    aria-label="Zero verified fixes status"
+                    className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/80 via-white to-slate-50 p-6 shadow-sm"
+                  >
+                    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                      <div className="space-y-1.5">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-white px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
+                          <Sparkles size={12} aria-hidden="true" />
+                          <span>Live 2026 Ledger · Zero Verified Fixes Yet</span>
+                        </span>
+                        <h2 className="font-[var(--font-heading)] text-lg font-bold text-slate-900">
+                          No verified fixes logged yet in the 2026 ledger.
+                          Report your first street pothole to earn points!
+                        </h2>
+                        <p className="text-sm text-slate-600">
+                          {liveCitizens.length === 0
+                            ? "No verified citizens yet. Be the first to audit a public issue!"
+                            : "All registered citizen profiles start at 0 points in Firestore until a repair passes Gemini AI verification (≥ 90% AI Confidence Score) and Admin approval."}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+                        {!user && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openAuthModal({
+                                title: "Sign In to Join the 2026 Hall of Fame",
+                                message:
+                                  "Sign in with Google to appear on the live citizen leaderboard and track your real Firestore points.",
+                              })
+                            }
+                            className="inline-flex min-h-[42px] cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 whitespace-nowrap"
+                          >
+                            <LogIn size={15} aria-hidden="true" />
+                            <span>Sign In with Google</span>
+                          </button>
+                        )}
+                        <Link
+                          href="/report"
+                          className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-700 whitespace-nowrap"
+                        >
+                          <Camera size={15} aria-hidden="true" />
+                          <span>Report Your First Pothole</span>
+                        </Link>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* Real Top 3 Podium Cards — ONLY rendered for real citizens with points > 0 */}
+                {citizenPodium.length > 0 && (
+                  <section aria-label="Top verified Bengaluru citizens">
+                    <div className="grid gap-5 md:grid-cols-3">
+                      {citizenPodium.map((star, idx) => {
+                        const isFirst = idx === 0;
+                        return (
+                          <HoverCard
+                            key={star.uid}
+                            className={`border-amber-300/90 bg-gradient-to-b from-amber-50/55 via-white to-white p-6 ${
+                              isFirst
+                                ? "shadow-md shadow-amber-500/15 ring-1 ring-amber-400/50"
+                                : "ring-1 ring-amber-300/35"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-xs font-bold text-amber-900">
+                                <Crown size={13} aria-hidden="true" />
+                                <span>#{star.rank} Vanguard Shortlist</span>
+                              </span>
+                              {star.isCurrentUser && (
+                                <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
+                                  You
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-4 flex items-center gap-3">
+                              {star.photoURL ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={star.photoURL}
+                                  alt={`${star.displayName} avatar`}
+                                  referrerPolicy="no-referrer"
+                                  className="h-11 w-11 shrink-0 rounded-full border-2 border-amber-400 object-cover"
+                                />
+                              ) : (
+                                <span
+                                  aria-hidden="true"
+                                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-amber-400 bg-amber-100 font-[var(--font-heading)] text-sm font-bold text-amber-950"
+                                >
+                                  {star.initials}
+                                </span>
+                              )}
+                              <div className="min-w-0">
+                                <h2 className="truncate font-[var(--font-heading)] text-lg font-bold text-slate-900">
+                                  {star.displayName}
+                                </h2>
+                                <p className="mt-0.5 text-xs text-slate-500">
+                                  {star.tierLabel}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-2 gap-3 border-t border-amber-200/60 pt-4">
+                              <div>
+                                <p className="text-[11px] font-medium text-slate-500">
+                                  Verified Fixes
+                                </p>
+                                <p className="mt-0.5 font-mono text-base font-bold tabular-nums text-slate-900">
+                                  {star.verifiedFixes}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-medium text-slate-500">
+                                  2026 Merit Points
+                                </p>
+                                <p className="mt-0.5 flex items-center gap-1 font-mono text-base font-bold tabular-nums text-amber-800">
+                                  <Trophy size={14} aria-hidden="true" />
+                                  <span>
+                                    {star.points.toLocaleString("en-IN")} pts
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+                          </HoverCard>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {/* Real Firestore Citizen Leaderboard Table */}
+                <section
+                  aria-label="Top Citizens (Vanguard Hall of Fame) table"
+                  className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm"
+                >
+                  <div className="flex flex-col justify-between gap-3 border-b border-slate-200/80 p-4 sm:flex-row sm:items-center sm:p-5">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+                        <Users
+                          size={16}
+                          className="text-blue-600"
+                          aria-hidden="true"
+                        />
+                        <span>
+                          Top Citizens (Vanguard Hall of Fame) — Live Firestore
+                          Standings
+                        </span>
+                      </h2>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {liveCitizens.length}{" "}
+                        {liveCitizens.length === 1
+                          ? "registered citizen"
+                          : "registered citizens"}{" "}
+                        in Firestore ordered by verified Merit Points (top 20
+                        shown).
+                      </p>
+                    </div>
+
+                    <div className="relative">
+                      <Search
+                        size={15}
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        type="search"
+                        aria-label="Search real citizens by name"
+                        value={citizenSearch}
+                        onChange={(e) => setCitizenSearch(e.target.value)}
+                        placeholder="Search citizen..."
+                        className="min-h-[38px] w-52 rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
+                      />
+                    </div>
+                  </div>
+
+                  {filteredCitizens.length === 0 ? (
+                    <div
+                      data-testid="empty-citizens-table"
+                      className="flex flex-col items-center justify-center px-6 py-14 text-center"
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+                        <Users size={22} aria-hidden="true" />
+                      </div>
+                      <p className="mt-3 text-base font-bold text-slate-900">
+                        {citizenSearch.trim()
+                          ? "No citizens match your search."
+                          : "No verified citizens yet. Be the first to audit a public issue!"}
+                      </p>
+                      <p className="mt-1 max-w-md text-xs leading-5 text-slate-600">
+                        {citizenSearch.trim()
+                          ? "Clear the search box to view all live Firestore citizen accounts."
+                          : "Sign in with Google and capture a real street pothole or civic hazard to enter the 2026 Bengaluru open civic ledger."}
+                      </p>
+                      {!citizenSearch.trim() && (
+                        <Link
+                          href="/report"
+                          className="mt-5 inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                        >
+                          <Camera size={15} aria-hidden="true" />
+                          <span>Snap &amp; Audit First Issue</span>
+                        </Link>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[680px] border-collapse text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold text-slate-600">
+                            <th className="px-5 py-3.5">Rank</th>
+                            <th className="px-5 py-3.5">Citizen</th>
+                            <th className="px-5 py-3.5">2026 Tier</th>
+                            <th className="px-5 py-3.5 text-right">
+                              Verified Fixes
+                            </th>
+                            <th className="px-5 py-3.5 text-right">
+                              Merit Points
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredCitizens.map((entry) => {
+                            const isTop5Active = entry.isShortlistEligible;
+                            return (
+                              <tr
+                                key={entry.uid}
+                                data-testid={
+                                  entry.isCurrentUser
+                                    ? "current-user-leaderboard-row"
+                                    : `citizen-row-${entry.rank}`
+                                }
+                                className={
+                                  isTop5Active
+                                    ? "border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-50/85 via-amber-50/35 to-white transition-colors hover:from-amber-50"
+                                    : entry.isCurrentUser
+                                      ? "border-l-4 border-l-blue-500 bg-blue-50/40 transition-colors hover:bg-blue-50/60"
+                                      : "transition-colors hover:bg-slate-50/80"
+                                }
+                              >
+                                <td className="px-5 py-4">
+                                  <span
+                                    className={`inline-flex min-h-[28px] min-w-[34px] items-center justify-center rounded-lg px-2.5 py-1 font-mono text-xs font-bold tabular-nums whitespace-nowrap ${
+                                      isTop5Active
+                                        ? "border border-amber-400 bg-amber-100 text-amber-950 shadow-xs"
+                                        : entry.isRanked
+                                          ? "bg-slate-100 text-slate-700"
+                                          : "border border-slate-200 bg-slate-50 text-slate-500"
+                                    }`}
+                                  >
+                                    {entry.rankLabel}
+                                  </span>
+                                </td>
+                                <td className="px-5 py-4">
+                                  <div className="flex items-center gap-3">
+                                    {entry.photoURL ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        src={entry.photoURL}
+                                        alt={`${entry.displayName} profile photo`}
+                                        referrerPolicy="no-referrer"
+                                        className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
+                                      />
+                                    ) : (
+                                      <span
+                                        aria-hidden="true"
+                                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                                          isTop5Active
+                                            ? "border-2 border-amber-400 bg-amber-100 text-amber-950"
+                                            : "border border-slate-200 bg-slate-100 text-slate-700"
+                                        }`}
+                                      >
+                                        {entry.initials}
+                                      </span>
+                                    )}
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <p className="truncate font-semibold text-slate-900">
+                                          {entry.displayName}
+                                        </p>
+                                        {entry.isCurrentUser && (
+                                          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                                            You
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-slate-500">
+                                        {entry.reportsCount}{" "}
+                                        {entry.reportsCount === 1
+                                          ? "report logged"
+                                          : "reports logged"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4">
+                                  {isTop5Active ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
+                                      <Crown size={12} aria-hidden="true" />
+                                      <span>{entry.tierLabel}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                                      <Award size={11} aria-hidden="true" />
+                                      <span>{entry.tierLabel}</span>
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-5 py-4 text-right font-mono text-xs font-bold tabular-nums text-slate-800">
+                                  {entry.verifiedFixes} verified
+                                </td>
+                                <td className="px-5 py-4 text-right font-mono text-sm font-bold tabular-nums text-blue-700">
+                                  <span
+                                    className={
+                                      isTop5Active ? "text-amber-900" : ""
+                                    }
+                                  >
+                                    {entry.points.toLocaleString("en-IN")} pts
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+          </motion.div>
+        ) : (
           <motion.div
             key="ward-standings-panel"
             role="tabpanel"
@@ -357,442 +921,243 @@ export function WardWarsClient() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25 }}
+            className="mt-7 space-y-6"
           >
-            {/* Top 3 Ward Podium Cards */}
-            <section aria-label="Top three Bengaluru wards" className="mt-7">
-              <div className="grid gap-5 md:grid-cols-3">
-                {podium.map((ward, idx) => {
-                  const isFirst = idx === 0;
-                  const rankBadgeClass =
-                    idx === 0
-                      ? "bg-amber-50 text-amber-800 border-amber-300"
-                      : idx === 1
-                        ? "bg-slate-100 text-slate-700 border-slate-200"
-                        : "bg-orange-50 text-orange-700 border-orange-200";
+            {wardError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              >
+                <AlertCircle
+                  size={16}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{wardError}</span>
+              </div>
+            )}
 
-                  return (
-                    <HoverCard
-                      key={ward.ward}
-                      className={`p-6 ${
-                        isFirst ? "border-amber-300 ring-1 ring-amber-400/25" : ""
-                      }`}
+            {loadingWards ? (
+              <LoadingState
+                label="Aggregating live ward standings from Firestore issues..."
+                rows={3}
+              />
+            ) : (
+              <>
+                {/* Live Citywide Ward Aggregation Summary Bar (Strictly Real Firestore Totals) */}
+                <section
+                  aria-label="Live Bengaluru ward totals"
+                  className="grid gap-4 sm:grid-cols-3"
+                >
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <p className="text-xs font-medium text-slate-500">
+                      Total Live Reports
+                    </p>
+                    <p
+                      data-testid="ward-total-reports"
+                      className="mt-1 font-mono text-3xl font-extrabold tabular-nums text-slate-900"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${rankBadgeClass}`}
-                        >
-                          {isFirst ? (
-                            <Trophy size={13} aria-hidden="true" />
-                          ) : (
-                            <Medal size={13} aria-hidden="true" />
-                          )}
-                          <span>#{ward.rank} Ward</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-emerald-700">
-                          <CheckCircle2 size={12} aria-hidden="true" />
-                          <span>{ward.resolutionRate}% Fixed</span>
-                        </span>
+                      {totalCityReports}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Aggregated directly from Firestore issues
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <p className="text-xs font-medium text-slate-500">
+                      Total Verified Fixes
+                    </p>
+                    <p
+                      data-testid="ward-total-verified"
+                      className="mt-1 font-mono text-3xl font-extrabold tabular-nums text-emerald-700"
+                    >
+                      {totalCityVerifiedFixes}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Issues marked Resolved / Verified_Fixed
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <p className="text-xs font-medium text-slate-500">
+                      Total Ward Points
+                    </p>
+                    <p
+                      data-testid="ward-total-points"
+                      className="mt-1 font-mono text-3xl font-extrabold tabular-nums text-blue-700"
+                    >
+                      {totalCityWardPoints.toLocaleString("en-IN")}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Formula: Verified Fixes × 50 Ward Points
+                    </p>
+                  </div>
+                </section>
+
+                {/* Live Ward Standings Cards Grid */}
+                <section
+                  aria-label="Live Bengaluru ward cards"
+                  className="space-y-4"
+                >
+                  <div className="flex flex-col justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:p-5">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">
+                        Ward Standings — Live Firestore Aggregation
+                      </h2>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Real counts from Firestore with zero hardcoded sample
+                        numbers.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="relative">
+                        <Search
+                          size={15}
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
+                        <input
+                          type="search"
+                          aria-label="Filter wards by name or zone"
+                          value={wardSearch}
+                          onChange={(e) => setWardSearch(e.target.value)}
+                          placeholder="Search ward..."
+                          className="min-h-[38px] w-48 rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
+                        />
                       </div>
 
-                      <h2 className="mt-4 font-[var(--font-heading)] text-2xl font-bold text-slate-900">
-                        {ward.ward}
-                      </h2>
-                      <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                        <MapPin
-                          size={12}
-                          className="text-blue-600"
+                      <div className="inline-flex items-center gap-1.5">
+                        <ArrowUpDown
+                          size={14}
+                          className="text-slate-400"
                           aria-hidden="true"
                         />
-                        <span>
-                          {ward.zone} · {ward.topColony}
-                        </span>
-                      </p>
-
-                      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
-                        <div>
-                          <p className="text-[11px] font-medium text-slate-500">
-                            Avg Fix Time
-                          </p>
-                          <p className="mt-0.5 flex items-center gap-1 font-mono text-base font-bold tabular-nums text-slate-900">
-                            <Clock
-                              size={14}
-                              className="text-blue-600"
-                              aria-hidden="true"
-                            />
-                            <span>{ward.avgFixHours} hrs</span>
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-medium text-slate-500">
-                            2026 Ward Points
-                          </p>
-                          <p className="mt-0.5 flex items-center gap-1 font-mono text-base font-bold tabular-nums text-blue-700">
-                            <Sparkles size={14} aria-hidden="true" />
-                            <span>
-                              {ward.civicPoints.toLocaleString("en-IN")}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                    </HoverCard>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* Full Ward Standings Table */}
-            <section
-              aria-label="Full Bengaluru ward rankings table"
-              className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm"
-            >
-              <div className="flex flex-col justify-between gap-3 border-b border-slate-200/80 p-4 sm:flex-row sm:items-center sm:p-5">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    Ward Standings — 2026 Bengaluru Pilot Wards
-                  </h2>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Live resolution rate, repair turnaround speed, and verified
-                    Merit Points by ward
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div className="relative">
-                    <Search
-                      size={15}
-                      aria-hidden="true"
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
-                    <input
-                      type="search"
-                      aria-label="Filter wards by name or colony"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search ward or colony..."
-                      className="min-h-[38px] w-48 rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-                    />
-                  </div>
-
-                  <div className="inline-flex items-center gap-1.5">
-                    <ArrowUpDown
-                      size={14}
-                      className="text-slate-400"
-                      aria-hidden="true"
-                    />
-                    <select
-                      aria-label="Sort ward rankings"
-                      value={sortKey}
-                      onChange={(e) =>
-                        setSortKey(e.target.value as WardSortKey)
-                      }
-                      className="min-h-[38px] rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-                    >
-                      <option value="resolutionRate">
-                        Resolution Rate (%)
-                      </option>
-                      <option value="avgFixHours">Fastest Avg Fix (hrs)</option>
-                      <option value="civicPoints">Most Merit Points</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[680px] border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold text-slate-600">
-                      <th className="px-5 py-3.5">Rank</th>
-                      <th className="px-5 py-3.5">Ward &amp; Top Colony</th>
-                      <th className="px-5 py-3.5">Resolution Rate</th>
-                      <th className="px-5 py-3.5 text-right">Avg Fix Hours</th>
-                      <th className="px-5 py-3.5 text-right">Verified Fixes</th>
-                      <th className="px-5 py-3.5 text-right">
-                        Ward Merit Points
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {sortedStandings.map((row) => (
-                      <tr
-                        key={row.ward}
-                        className="transition-colors hover:bg-slate-50/80"
-                      >
-                        <td className="px-5 py-4 font-mono text-xs font-bold tabular-nums text-slate-700">
-                          #{row.rank}
-                        </td>
-                        <td className="px-5 py-4">
-                          <p className="font-semibold text-slate-900">
-                            {row.ward}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {row.zone} · {row.topColony}
-                          </p>
-                        </td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className="h-2 w-24 overflow-hidden rounded-full bg-slate-100"
-                              role="progressbar"
-                              aria-label={`${row.ward} resolution rate ${row.resolutionRate}%`}
-                              aria-valuenow={row.resolutionRate}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                            >
-                              <div
-                                className={`h-full rounded-full ${
-                                  row.resolutionRate >= 85
-                                    ? "bg-emerald-600"
-                                    : row.resolutionRate >= 75
-                                      ? "bg-blue-600"
-                                      : "bg-amber-500"
-                                }`}
-                                style={{ width: `${row.resolutionRate}%` }}
-                              />
-                            </div>
-                            <span className="font-mono text-xs font-bold tabular-nums text-slate-900">
-                              {row.resolutionRate}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-700">
-                          {row.avgFixHours} hrs
-                        </td>
-                        <td className="px-5 py-4 text-right font-mono text-xs font-semibold tabular-nums text-slate-700">
-                          {row.verifiedFixes}
-                        </td>
-                        <td className="px-5 py-4 text-right font-mono text-sm font-bold tabular-nums text-blue-700">
-                          {row.civicPoints.toLocaleString("en-IN")} pts
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="citizen-stars-panel"
-            role="tabpanel"
-            aria-label="2026 Vanguard Hall of Fame"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.25 }}
-          >
-            {/* Top 3 Vanguard Contenders Podium */}
-            <section
-              aria-label="Top three Bengaluru Civic Vanguard Contenders"
-              className="mt-7"
-            >
-              <div className="grid gap-5 md:grid-cols-3">
-                {citizenPodium.map((star, idx) => {
-                  const isFirst = idx === 0;
-                  return (
-                    <HoverCard
-                      key={star.alias}
-                      className={`border-amber-300/90 bg-gradient-to-b from-amber-50/55 via-white to-white p-6 ${
-                        isFirst
-                          ? "shadow-md shadow-amber-500/15 ring-1 ring-amber-400/50"
-                          : "ring-1 ring-amber-300/35"
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-xs font-bold text-amber-900">
-                          <Crown size={13} aria-hidden="true" />
-                          <span>#{star.rank} Vanguard Shortlist</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-                          <ShieldCheck size={11} aria-hidden="true" />
-                          <span>Panel Reviewed</span>
-                        </span>
-                      </div>
-
-                      <div className="mt-4 flex items-center gap-3">
-                        <span
-                          aria-hidden="true"
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-amber-400 bg-amber-100 font-[var(--font-heading)] text-sm font-bold text-amber-950"
+                        <select
+                          aria-label="Sort live ward rankings"
+                          value={wardSortKey}
+                          onChange={(e) =>
+                            setWardSortKey(e.target.value as LiveWardSortKey)
+                          }
+                          className="min-h-[38px] rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
                         >
-                          {star.initials}
-                        </span>
-                        <div className="min-w-0">
-                          <h2 className="truncate font-[var(--font-heading)] text-lg font-bold text-slate-900">
-                            {star.alias}
-                          </h2>
-                          <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                            <MapPin
-                              size={12}
-                              className="text-blue-600"
-                              aria-hidden="true"
-                            />
-                            <span className="truncate">
-                              {star.ward} · {star.specialty}
-                            </span>
-                          </p>
-                        </div>
+                          <option value="wardPoints">Most Ward Points</option>
+                          <option value="verifiedFixes">
+                            Most Verified Fixes
+                          </option>
+                          <option value="totalReports">Most Reports</option>
+                          <option value="resolutionRate">
+                            Resolution Rate (%)
+                          </option>
+                        </select>
                       </div>
+                    </div>
+                  </div>
 
-                      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-amber-200/60 pt-4">
-                        <div>
-                          <p className="text-[11px] font-medium text-slate-500">
-                            Verified Fixes
-                          </p>
-                          <p className="mt-0.5 font-mono text-base font-bold tabular-nums text-slate-900">
-                            {star.verifiedFixes} fixes
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-medium text-slate-500">
-                            2026 Merit Points
-                          </p>
-                          <p className="mt-0.5 flex items-center gap-1 font-mono text-base font-bold tabular-nums text-amber-800">
-                            <Trophy size={14} aria-hidden="true" />
-                            <span>
-                              {star.civicPoints.toLocaleString("en-IN")} pts
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                    </HoverCard>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* Top 10 Personal Citizen Stars Table */}
-            <section
-              aria-label="2026 Vanguard Hall of Fame table"
-              className="mt-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm"
-            >
-              <div className="flex flex-col justify-between gap-3 border-b border-slate-200/80 p-4 sm:flex-row sm:items-center sm:p-5">
-                <div>
-                  <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-                    <Users size={16} className="text-blue-600" aria-hidden="true" />
-                    <span>
-                      2026 Vanguard Hall of Fame — Top 10 Bengaluru Auditors
-                    </span>
-                  </h2>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Highlighted Ranks #1–#5 are shortlisted for the Bengaluru
-                    Civic Vanguard Citation after independent community review
-                    panel audit on {ANNUAL_CM_SEASON_CLOSE_LABEL}.
-                  </p>
-                </div>
-
-                <div className="relative">
-                  <Search
-                    size={15}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    type="search"
-                    aria-label="Filter top citizens by alias or ward"
-                    value={citizenSearch}
-                    onChange={(e) => setCitizenSearch(e.target.value)}
-                    placeholder="Search citizen or ward..."
-                    className="min-h-[38px] w-52 rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20"
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[780px] border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold text-slate-600">
-                      <th className="px-5 py-3.5">Rank</th>
-                      <th className="px-5 py-3.5">Citizen &amp; Ward</th>
-                      <th className="px-5 py-3.5">2026 Vanguard Status</th>
-                      <th className="px-5 py-3.5 text-right">Verified Fixes</th>
-                      <th className="px-5 py-3.5 text-right">Total Points</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredCitizens.map((entry) => {
-                      const isTop5 = entry.isCmContender || entry.rank <= 5;
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {filteredWards.map((row) => {
+                      const hasActivity = row.totalReports > 0;
                       return (
-                        <tr
-                          key={entry.alias}
-                          data-testid={
-                            isTop5
-                              ? `vanguard-shortlist-row-${entry.rank}`
-                              : `citizen-row-${entry.rank}`
-                          }
-                          className={
-                            isTop5
-                              ? "border-l-4 border-l-amber-400 bg-gradient-to-r from-amber-50/90 via-amber-50/40 to-white shadow-[inset_0_0_0_1px_rgba(245,158,11,0.5)] transition-colors hover:from-amber-50"
-                              : "transition-colors hover:bg-slate-50/80"
-                          }
+                        <HoverCard
+                          key={row.ward}
+                          className={`flex flex-col justify-between p-5 ${
+                            row.wardPoints > 0 && row.rank === 1
+                              ? "border-amber-300 ring-1 ring-amber-400/25"
+                              : "border-slate-200"
+                          }`}
                         >
-                          <td className="px-5 py-4">
-                            <span
-                              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg font-mono text-xs font-bold tabular-nums ${
-                                isTop5
-                                  ? "border border-amber-400 bg-amber-100 text-amber-950 shadow-xs"
-                                  : "bg-slate-100 text-slate-700"
-                              }`}
-                            >
-                              #{entry.rank}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-3">
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
                               <span
-                                aria-hidden="true"
-                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                                  isTop5
-                                    ? "border-2 border-amber-400 bg-amber-100 text-amber-950"
-                                    : "border border-slate-200 bg-slate-100 text-slate-700"
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${
+                                  row.wardPoints > 0 && row.rank === 1
+                                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                                    : "border-slate-200 bg-slate-100 text-slate-700"
                                 }`}
                               >
-                                {entry.initials}
+                                {row.wardPoints > 0 && row.rank === 1 ? (
+                                  <Trophy size={12} aria-hidden="true" />
+                                ) : (
+                                  <Medal size={12} aria-hidden="true" />
+                                )}
+                                <span>#{row.rank}</span>
                               </span>
-                              <div>
-                                <p className="font-semibold text-slate-900">
-                                  {entry.alias}
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                  {entry.ward} · {entry.specialty}
-                                </p>
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-xs font-semibold tabular-nums ${
+                                  row.resolutionRate > 0
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : "border-slate-200 bg-slate-50 text-slate-600"
+                                }`}
+                              >
+                                <CheckCircle2 size={12} aria-hidden="true" />
+                                <span>{row.resolutionRate}% Fixed</span>
+                              </span>
+                            </div>
+
+                            <h3 className="mt-3 font-[var(--font-heading)] text-xl font-bold text-slate-900">
+                              {row.ward}
+                            </h3>
+                            <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                              <MapPin
+                                size={12}
+                                className="text-blue-600"
+                                aria-hidden="true"
+                              />
+                              <span>
+                                {row.zone} · {row.topColony}
+                              </span>
+                            </p>
+
+                            {/* Real Dynamic Metrics Line */}
+                            <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3.5 py-3">
+                              <p className="font-mono text-xs font-bold tabular-nums text-slate-800">
+                                {row.totalReports}{" "}
+                                {row.totalReports === 1 ? "Report" : "Reports"}{" "}
+                                • {row.verifiedFixes} Verified{" "}
+                                {row.verifiedFixes === 1 ? "Fix" : "Fixes"} •{" "}
+                                {row.wardPoints.toLocaleString("en-IN")} Ward{" "}
+                                {row.wardPoints === 1 ? "Point" : "Points"}
+                              </p>
+
+                              <div
+                                className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-slate-200/80"
+                                role="progressbar"
+                                aria-label={`${row.ward} resolution rate ${row.resolutionRate}%`}
+                                aria-valuenow={row.resolutionRate}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                              >
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    hasActivity
+                                      ? "bg-emerald-600"
+                                      : "bg-slate-300"
+                                  }`}
+                                  style={{ width: `${row.resolutionRate}%` }}
+                                />
                               </div>
                             </div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {isTop5 ? (
-                                <>
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 shadow-xs">
-                                    <Crown size={12} aria-hidden="true" />
-                                    <span>Civic Vanguard Laureate</span>
-                                  </span>
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                    <ShieldCheck size={11} aria-hidden="true" />
-                                    <span>Independent Panel Shortlist</span>
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                                  <Award size={11} aria-hidden="true" />
-                                  <span>{entry.tierLabel}</span>
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-5 py-4 text-right font-mono text-xs font-bold tabular-nums text-slate-800">
-                            {entry.verifiedFixes} verified
-                          </td>
-                          <td className="px-5 py-4 text-right font-mono text-sm font-bold tabular-nums text-blue-700">
-                            <span className={isTop5 ? "text-amber-900" : ""}>
-                              {entry.civicPoints.toLocaleString("en-IN")} pts
-                            </span>
-                          </td>
-                        </tr>
+                          </div>
+
+                          <div className="mt-4 pt-2">
+                            <Link
+                              href={`/report?ward=${encodeURIComponent(row.ward)}`}
+                              className={`inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-all ${
+                                hasActivity
+                                  ? "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                  : "bg-blue-600 text-white shadow-xs hover:bg-blue-700"
+                              }`}
+                            >
+                              <Camera size={14} aria-hidden="true" />
+                              <span>Report an Issue in this Ward</span>
+                            </Link>
+                          </div>
+                        </HoverCard>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                  </div>
+                </section>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

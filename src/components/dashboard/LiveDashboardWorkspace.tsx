@@ -478,16 +478,19 @@ export function LiveDashboardWorkspace() {
         </div>
       ) : (
         /* GUEST SIGN-IN PROMPT (NO FAKE PERSONAL DATA) */
-        <section className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/70 via-white to-slate-50 p-6 shadow-sm">
+        <section
+          data-testid="guest-ledger-banner"
+          className="rounded-2xl border border-blue-300 bg-blue-50/90 p-6 shadow-xs"
+        >
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div className="space-y-1">
               <p className="text-xs font-semibold tracking-wide text-blue-700 uppercase">
                 Live Citizen Ledger
               </p>
-              <h2 className="font-[var(--font-heading)] text-xl font-bold text-slate-900">
-                Sign in with Google to view your personal audit ledger
+              <h2 className="font-[var(--font-heading)] text-xl font-bold text-blue-950">
+                Sign in to view your real-time Citizen Ledger.
               </h2>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-blue-900/80">
                 New citizen accounts start at 0 Merit Points and 0 Verified
                 Fixes in Firestore, unlocking SHA-256 certificates automatically
                 once 5 repairs are verified.

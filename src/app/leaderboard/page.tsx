@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { WardWarsClient } from "@/components/leaderboard/WardWarsClient";
 
 export const metadata: Metadata = {
-  title: "Ward Wars Leaderboard",
+  title:
+    "Live Citizen & Ward Leaderboard — CivicSnap AI Independent Bengaluru Public Infrastructure Ledger",
   description:
-    "Bengaluru Ward Wars rankings by resolution rate, average fix hours, and colony CivicPoints.",
+    "Live Firestore citizen Hall of Fame and dynamic Bengaluru ward standings computed from real verified civic infrastructure reports.",
 };
 
 export default function LeaderboardPage() {

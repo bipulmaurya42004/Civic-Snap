@@ -234,17 +234,17 @@ export function DashboardOverview({
         <EmptyState
           title={
             issues.length === 0
-              ? "No production reports recorded yet"
+              ? "No public civic issues recorded yet"
               : "No reports in this filtered view"
           }
           description={
             issues.length === 0
-              ? "Live dashboard charts populate automatically from approved public reports on CivicSnap Cloud. Submit a report or explore working filters and charts in the read-only demo now."
+              ? "Live dashboard charts populate automatically from approved public reports in Firestore. Report a real street pothole, broken streetlight, or waste pile to populate the citywide ledger."
               : "Adjust the date range, ward, or category filters above to inspect other CivicSnap reports."
           }
           primaryAction={
             issues.length === 0
-              ? { label: "Open Demo Dashboard", href: "/demo?tab=dashboard" }
+              ? { label: "Snap & Audit First Issue", href: "/report" }
               : undefined
           }
         />

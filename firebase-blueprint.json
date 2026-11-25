@@ -74,7 +74,7 @@
     },
     "PublicProfile": {
       "title": "PublicProfile",
-      "description": "Public opt-in contributor alias and CivicPoints projection containing zero PII (no email or legal name).",
+      "description": "Public opt-in contributor display name, avatar URL, and CivicPoints projection containing zero PII (no email).",
       "type": "object",
       "properties": {
         "uid": {
@@ -88,6 +88,14 @@
           "minLength": 2,
           "maxLength": 40
         },
+        "displayName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500
+        },
         "leaderboardOptIn": {
           "type": "boolean"
         },
@@ -95,10 +103,20 @@
           "type": "integer",
           "description": "Admin-awarded CivicPoints total displayed on the public leaderboard."
         },
+        "points": {
+          "type": "integer",
+          "description": "Mirrored non-client-writable CivicPoints total displayed on the public leaderboard."
+        },
         "acceptedReportsCount": {
           "type": "integer"
         },
+        "reportsCount": {
+          "type": "integer"
+        },
         "resolvedReportsCount": {
+          "type": "integer"
+        },
+        "resolvedCount": {
           "type": "integer"
         },
         "updatedAt": {

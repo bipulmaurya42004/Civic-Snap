@@ -106,16 +106,23 @@ service cloud.firestore {
     function isValidPublicProfile(data, userId) {
       return data.keys().hasAll(['uid', 'alias', 'leaderboardOptIn', 'updatedAt'])
         && data.keys().hasOnly([
-          'uid', 'alias', 'leaderboardOptIn',
-          'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount',
+          'uid', 'alias', 'displayName', 'photoURL', 'leaderboardOptIn',
+          'civicPoints', 'points',
+          'acceptedReportsCount', 'reportsCount',
+          'resolvedReportsCount', 'resolvedCount',
           'updatedAt'
         ])
         && data.uid is string && data.uid == userId && isValidId(data.uid)
         && data.alias is string && data.alias.size() >= 2 && data.alias.size() <= 40
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 80))
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500 && (data.photoURL == '' || data.photoURL.matches('^https://.+$'))))
         && data.leaderboardOptIn is bool
         && (!('civicPoints' in data) || (data.civicPoints is int && data.civicPoints >= 0 && data.civicPoints <= 1000000))
+        && (!('points' in data) || (data.points is int && data.points >= 0 && data.points <= 1000000))
         && (!('acceptedReportsCount' in data) || (data.acceptedReportsCount is int && data.acceptedReportsCount >= 0 && data.acceptedReportsCount <= 100000))
+        && (!('reportsCount' in data) || (data.reportsCount is int && data.reportsCount >= 0 && data.reportsCount <= 100000))
         && (!('resolvedReportsCount' in data) || (data.resolvedReportsCount is int && data.resolvedReportsCount >= 0 && data.resolvedReportsCount <= 100000))
+        && (!('resolvedCount' in data) || (data.resolvedCount is int && data.resolvedCount >= 0 && data.resolvedCount <= 100000))
         && data.updatedAt is timestamp;
     }
 
@@ -372,8 +379,11 @@ service cloud.firestore {
         && request.auth.uid == userId
         && isValidPublicProfile(incoming(), userId)
         && (!('civicPoints' in incoming()) || incoming().civicPoints == 0)
+        && (!('points' in incoming()) || incoming().points == 0)
         && (!('acceptedReportsCount' in incoming()) || incoming().acceptedReportsCount == 0)
+        && (!('reportsCount' in incoming()) || incoming().reportsCount == 0)
         && (!('resolvedReportsCount' in incoming()) || incoming().resolvedReportsCount == 0)
+        && (!('resolvedCount' in incoming()) || incoming().resolvedCount == 0)
         && incoming().updatedAt == request.time;
 
       allow update: if isVerified()
@@ -386,15 +396,16 @@ service cloud.firestore {
           (
             isAdmin()
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'civicPoints', 'acceptedReportsCount', 'resolvedReportsCount', 'updatedAt'
+              'civicPoints', 'points', 'acceptedReportsCount', 'reportsCount',
+              'resolvedReportsCount', 'resolvedCount', 'updatedAt'
             ])
           )
           ||
-          // Tier 2: Owner editing alias or leaderboard opt-in only (never CivicPoints)
+          // Tier 2: Owner editing alias, displayName, photoURL, or leaderboard opt-in only (never points or counts)
           (
             request.auth.uid == userId
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'alias', 'leaderboardOptIn', 'updatedAt'
+              'alias', 'displayName', 'photoURL', 'leaderboardOptIn', 'updatedAt'
             ])
           )
           ||

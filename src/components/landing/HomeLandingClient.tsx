@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/MotionPrimitives";
 import { generateQrMatrix } from "@/lib/bengaluru-feed-data";
 import {
-  ANNUAL_CM_SEASON_CLOSE_LABEL,
   ANNUAL_CM_SEASON_YEAR,
   ANNUAL_CM_SUMMIT_TITLE,
   buildCertificateVerifyUrl,
@@ -232,9 +231,9 @@ export function HomeLandingClient() {
                     />
                     <span>BENGALURU CIVIC VANGUARD CITATION 2026</span>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/90 px-3 py-1 text-[11px] font-bold text-amber-950 whitespace-nowrap">
-                    <Clock size={12} aria-hidden="true" />
-                    <span>2026 Season Closes Dec 31</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-800 whitespace-nowrap">
+                    <ShieldCheck size={12} aria-hidden="true" />
+                    <span>Live Open Firestore Ledger</span>
                   </span>
                 </div>
 
@@ -376,8 +375,95 @@ export function HomeLandingClient() {
               </div>
             </div>
 
-            {/* Right Column: Interactive AI Audit & Confidence Score Card */}
+            {/* Right Column: Live Citizen Ledger Card for signed-in users; [Demo Data] preview ONLY for guests */}
             <div className="lg:col-span-5">
+              {user ? (
+                <div
+                  data-testid="hero-live-citizen-card"
+                  className="overflow-hidden rounded-2xl border border-emerald-200/90 bg-white p-6 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+                      <ShieldCheck size={13} aria-hidden="true" />
+                      <span>100% Live Firestore Ledger</span>
+                    </span>
+                    <span className="font-mono text-xs font-semibold text-slate-500">
+                      {(profile?.points ?? profile?.civicPoints ?? 0) > 0
+                        ? "Active Auditor"
+                        : "Unranked"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold tracking-wide text-blue-600 uppercase">
+                      Signed-in Citizen Profile
+                    </p>
+                    <h2 className="mt-1 font-[var(--font-heading)] text-xl font-bold text-slate-900">
+                      {displayAlias || user.displayName || "Bengaluru Citizen"}
+                    </h2>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Zero dummy figures shown. Every point, verified fix, and
+                      SHA-256 certificate unlocks strictly from your real
+                      Firestore audit records.
+                    </p>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-3 gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 p-3.5 text-center">
+                    <div>
+                      <p className="font-mono text-lg font-extrabold tabular-nums text-slate-900">
+                        {profile?.points ?? profile?.civicPoints ?? 0}
+                      </p>
+                      <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                        Merit Points
+                      </p>
+                    </div>
+                    <div className="border-x border-slate-200 px-1">
+                      <p className="font-mono text-lg font-extrabold tabular-nums text-emerald-700">
+                        {profile?.resolvedCount ??
+                          profile?.resolvedReportsCount ??
+                          0}
+                      </p>
+                      <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                        Verified Fixes
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-mono text-lg font-extrabold tabular-nums text-blue-700">
+                        {Math.floor(
+                          (profile?.resolvedCount ??
+                            profile?.resolvedReportsCount ??
+                            0) / 5
+                        )}
+                      </p>
+                      <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                        Certificates
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-blue-200/80 bg-blue-50/70 px-3.5 py-2.5 text-xs leading-5 text-blue-950">
+                    <strong>Pioneer Verifier Zone:</strong> Log your first
+                    verified fix (AI Confidence Score ≥ 90% + Admin approval) to
+                    earn +50 Merit Points and claim a Top 5 spot.
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap items-center gap-2.5">
+                    <Link
+                      href="/dashboard"
+                      className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 whitespace-nowrap"
+                    >
+                      <span>Open My Live Dashboard</span>
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </Link>
+                    <Link
+                      href="/leaderboard"
+                      className="inline-flex min-h-[42px] items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                    >
+                      Standings
+                    </Link>
+                  </div>
+                </div>
+              ) : (
               <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
                   <div className="flex flex-wrap items-center gap-2">
@@ -535,6 +621,7 @@ export function HomeLandingClient() {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -559,13 +646,10 @@ export function HomeLandingClient() {
                 The 2026 Bengaluru Civic Vanguard Citation
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-                Each annual audit cycle closes on{" "}
-                <strong className="font-semibold text-slate-900">
-                  {ANNUAL_CM_SEASON_CLOSE_LABEL}
-                </strong>
-                . The Top 5 citizen contributors with the highest verified
-                Merit Points are independently audited by a community review
-                panel and recognized on the open public ledger.
+                Standings update continuously from live Firestore verification
+                records. The Top 5 citizen contributors with the highest
+                verified Merit Points are independently audited by a community
+                review panel and recognized on the open public ledger.
               </p>
             </div>
 
@@ -604,21 +688,18 @@ export function HomeLandingClient() {
             ))}
           </div>
 
-          {/* Season Cutoff Counter Bar */}
+          {/* Live Ledger Protocol Bar */}
           <div className="mt-7 flex flex-col items-start justify-between gap-3 rounded-2xl border border-amber-300/80 bg-white px-5 py-4 shadow-xs sm:flex-row sm:items-center">
             <div className="flex items-center gap-3 text-sm font-semibold text-slate-900">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
-                <Clock size={17} aria-hidden="true" />
+                <ShieldCheck size={17} aria-hidden="true" />
               </span>
               <span>
-                {ANNUAL_CM_SEASON_YEAR} Annual Audit Cycle Closes:{" "}
-                <strong className="text-blue-700">
-                  {ANNUAL_CM_SEASON_CLOSE_LABEL}
-                </strong>{" "}
+                Live {ANNUAL_CM_SEASON_YEAR} Open Citizen Ledger{" "}
                 <span className="text-slate-300" aria-hidden="true">
                   •
                 </span>{" "}
-                Independent Panel Review Required
+                Dynamic Top 5 Cutoff &amp; Independent Panel Review Required
               </span>
             </div>
             <Link

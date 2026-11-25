@@ -1140,8 +1140,11 @@ export async function moderateReportAsAdmin(
       if (publicSnap && publicSnap.exists()) {
         batch.update(publicProfileRef, {
           civicPoints: nextUserPoints,
+          points: nextUserPoints,
           acceptedReportsCount: nextAcceptedCount,
+          reportsCount: nextAcceptedCount,
           resolvedReportsCount: nextResolvedCount,
+          resolvedCount: nextResolvedCount,
           updatedAt: now,
         });
       }

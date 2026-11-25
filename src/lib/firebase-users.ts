@@ -138,7 +138,7 @@ export async function syncUserProfileOnSignIn(
     user.email
   );
   const displayName = (user.displayName ?? alias).replace(/\s+/g, " ").trim().slice(0, 80);
-  const leaderboardOptIn = Boolean(options?.leaderboardOptIn ?? false);
+  const leaderboardOptIn = Boolean(options?.leaderboardOptIn ?? true);
   const email = (user.email ?? "").slice(0, 254);
   const rawPhoto = (user.photoURL ?? "").trim();
   const photoURL = rawPhoto.startsWith("https://") ? rawPhoto.slice(0, 500) : "";
@@ -169,10 +169,15 @@ export async function syncUserProfileOnSignIn(
     batch.set(doc(db, "public_profiles", user.uid), {
       uid: user.uid,
       alias,
+      displayName,
+      ...(photoURL ? { photoURL } : {}),
       leaderboardOptIn,
       civicPoints: 0,
+      points: 0,
       acceptedReportsCount: 0,
+      reportsCount: 0,
       resolvedReportsCount: 0,
+      resolvedCount: 0,
       updatedAt: now,
     });
 
