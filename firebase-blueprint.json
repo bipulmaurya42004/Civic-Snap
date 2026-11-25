@@ -596,7 +596,7 @@
     },
     "CivicIssue": {
       "title": "CivicIssue",
-      "description": "Immutable-status citizen infrastructure issue ledger entry where clients cannot forge verification scores or statuses.",
+      "description": "Publicly readable citizen infrastructure issue ledger entry with strict admin verification guards and AI material estimates.",
       "type": "object",
       "properties": {
         "id": {
@@ -621,16 +621,73 @@
           "minLength": 10,
           "maxLength": 600
         },
+        "category": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
         "ward": {
           "type": "string",
           "minLength": 2,
           "maxLength": 80
         },
+        "location": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "evidencePhotoUrl": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 2048,
+          "pattern": "^(https://|/demo/).+$"
+        },
+        "asphaltEstimateKg": {
+          "type": "number"
+        },
+        "estimatedCostInr": {
+          "type": "number"
+        },
+        "materialEstimate": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 240
+        },
         "status": {
           "type": "string",
-          "enum": ["Reported", "Under_AI_Verification", "Needs_Review", "Verified_Fixed", "Rejected"]
+          "enum": ["Reported", "Under_AI_Verification", "Needs_Review", "Resolved", "Verified_Fixed", "Rejected"]
+        },
+        "adminVerified": {
+          "type": "boolean"
+        },
+        "adminActionBy": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254,
+          "description": "Authorized admin email recorded when an admin approves or rejects an issue."
+        },
+        "rejectionNote": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 300,
+          "description": "Admin rejection note saved when marking an issue as invalid or spam."
+        },
+        "rejectionReason": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 300
         },
         "aiScore": {
+          "type": "integer"
+        },
+        "aiConfidenceScore": {
           "type": "integer"
         },
         "imageHash": {

@@ -265,16 +265,31 @@ service cloud.firestore {
     function isValidCivicIssue(data, issueId) {
       return data.keys().hasAll(['reportedByUid', 'title', 'status', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly([
-          'id', 'reportedByUid', 'title', 'description', 'ward',
-          'status', 'aiScore', 'imageHash', 'verifiedAt', 'createdAt', 'updatedAt'
+          'id', 'reportedByUid', 'title', 'description', 'category', 'ward', 'location',
+          'lat', 'lng', 'evidencePhotoUrl', 'asphaltEstimateKg', 'estimatedCostInr', 'materialEstimate',
+          'status', 'adminVerified', 'adminActionBy', 'rejectionNote', 'rejectionReason',
+          'aiScore', 'aiConfidenceScore', 'imageHash', 'verifiedAt', 'createdAt', 'updatedAt'
         ])
         && (!('id' in data) || (data.id is string && data.id == issueId && isValidId(data.id)))
         && data.reportedByUid is string && isValidId(data.reportedByUid)
         && data.title is string && data.title.size() >= 5 && data.title.size() <= 120
         && (!('description' in data) || (data.description is string && data.description.size() >= 10 && data.description.size() <= 600))
+        && (!('category' in data) || (data.category is string && data.category.size() >= 2 && data.category.size() <= 40))
         && (!('ward' in data) || (data.ward is string && data.ward.size() >= 2 && data.ward.size() <= 80))
-        && data.status is string && data.status in ['Reported', 'Under_AI_Verification', 'Needs_Review', 'Verified_Fixed', 'Rejected']
+        && (!('location' in data) || (data.location is string && data.location.size() >= 2 && data.location.size() <= 200))
+        && (!('lat' in data) || (data.lat is number && data.lat >= -90 && data.lat <= 90))
+        && (!('lng' in data) || (data.lng is number && data.lng >= -180 && data.lng <= 180))
+        && (!('evidencePhotoUrl' in data) || isValidSafeImageUrl(data.evidencePhotoUrl))
+        && (!('asphaltEstimateKg' in data) || (data.asphaltEstimateKg is number && data.asphaltEstimateKg >= 0 && data.asphaltEstimateKg <= 100000))
+        && (!('estimatedCostInr' in data) || (data.estimatedCostInr is number && data.estimatedCostInr >= 0 && data.estimatedCostInr <= 10000000))
+        && (!('materialEstimate' in data) || (data.materialEstimate is string && data.materialEstimate.size() >= 2 && data.materialEstimate.size() <= 240))
+        && data.status is string && data.status in ['Reported', 'Under_AI_Verification', 'Needs_Review', 'Resolved', 'Verified_Fixed', 'Rejected']
+        && (!('adminVerified' in data) || data.adminVerified is bool)
+        && (!('adminActionBy' in data) || (data.adminActionBy is string && data.adminActionBy.size() >= 3 && data.adminActionBy.size() <= 254))
+        && (!('rejectionNote' in data) || (data.rejectionNote is string && data.rejectionNote.size() >= 2 && data.rejectionNote.size() <= 300))
+        && (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() >= 2 && data.rejectionReason.size() <= 300))
         && (!('aiScore' in data) || (data.aiScore is int && data.aiScore >= 0 && data.aiScore <= 100))
+        && (!('aiConfidenceScore' in data) || (data.aiConfidenceScore is int && data.aiConfidenceScore >= 0 && data.aiConfidenceScore <= 100))
         && (!('imageHash' in data) || isValidHexHash(data.imageHash))
         && (!('verifiedAt' in data) || data.verifiedAt is timestamp)
         && data.createdAt is timestamp
@@ -559,7 +574,7 @@ service cloud.firestore {
       allow delete: if isAdmin() && isValidId(reportId);
     }
 
-    // Hardened Public Issues Ledger (Zero client forgery of status, aiScore, verifiedAt, or reportedByUid)
+    // Hardened Public Issues Ledger (Zero client forgery of status, adminVerified, verifiedAt, or reportedByUid)
     match /issues/{issueId} {
       allow get: if isValidId(issueId);
       allow list: if true;
@@ -569,8 +584,11 @@ service cloud.firestore {
         && isValidCivicIssue(incoming(), issueId)
         && incoming().reportedByUid == request.auth.uid
         && incoming().status in ['Reported', 'Under_AI_Verification']
-        && !('aiScore' in incoming())
+        && (!('adminVerified' in incoming()) || incoming().adminVerified == false)
+        && !('adminActionBy' in incoming())
         && !('verifiedAt' in incoming())
+        && !('rejectionNote' in incoming())
+        && !('rejectionReason' in incoming())
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -581,17 +599,27 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
+          // Tier 1: Authorised Admin approving/resolving or rejecting issues in real time
           (
             isAdmin()
             && incoming().diff(existing()).affectedKeys().hasOnly([
-              'status', 'aiScore', 'verifiedAt', 'updatedAt'
+              'status', 'adminVerified', 'adminActionBy', 'verifiedAt',
+              'rejectionNote', 'rejectionReason', 'aiScore', 'aiConfidenceScore', 'updatedAt'
             ])
+            && (!('adminActionBy' in incoming()) || incoming().adminActionBy == request.auth.token.email)
           )
           ||
+          // Tier 2: Owner editing non-terminal descriptive fields only (never status, adminVerified, adminActionBy, or scores)
           (
             existing().reportedByUid == request.auth.uid
-            && !incoming().diff(existing()).affectedKeys().hasAny(['status', 'aiScore', 'verifiedAt', 'reportedByUid'])
-            && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'ward', 'updatedAt'])
+            && existing().status in ['Reported', 'Under_AI_Verification']
+            && !incoming().diff(existing()).affectedKeys().hasAny([
+              'status', 'adminVerified', 'adminActionBy', 'verifiedAt',
+              'rejectionNote', 'rejectionReason', 'aiScore', 'aiConfidenceScore', 'reportedByUid'
+            ])
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'description', 'ward', 'location', 'updatedAt'
+            ])
           )
         );
 

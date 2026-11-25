@@ -67,7 +67,7 @@ const DRAWER_PLATFORM_ITEMS = [
   { label: "Leaderboard", href: "/ward-wars", icon: Trophy },
   { label: "Civic Honors", href: "/rewards", icon: Award },
   { label: "Dashboard (Staff)", href: "/admin", icon: Shield },
-  { label: "Read-Only Audit View", href: "/admin?mode=judge", icon: ShieldCheck },
+  { label: "Read-Only Demo", href: "/demo", icon: ShieldCheck },
 ] as const;
 
 export function SiteHeader() {
@@ -362,7 +362,7 @@ export function SiteHeader() {
                   <ul className="space-y-1">
                     {DRAWER_PLATFORM_ITEMS.map((item) => {
                       const Icon = item.icon;
-                      const isDemoLink = item.href.includes("mode=judge");
+                      const isDemoLink = item.href === "/demo";
                       return (
                         <li key={item.href}>
                           <Link

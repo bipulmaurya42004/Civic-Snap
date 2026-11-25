@@ -40,6 +40,7 @@ import {
   evaluateLocationCooldown,
   isDuplicateImageHash,
 } from "@/lib/anti-spam";
+import { extractMaterialMetrics } from "@/lib/admin-issues-logic";
 
 export interface CreateCivicReportInput {
   title: string;
@@ -392,12 +393,69 @@ export async function createCivicReport(
 
   const reportRef = doc(db, "reports", reportId);
   const eventRef = doc(db, "reports", reportId, "events", eventId);
+  const issueRef = doc(db, "issues", reportId);
+
+  const parsedMaterials = extractMaterialMetrics({
+    materialEstimate: cleanMaterials,
+    economicCostOfDelay: cleanEconomicCost,
+  });
+
+  const issuePayload: Record<string, unknown> = {
+    id: reportId,
+    reportedByUid: user.uid,
+    title,
+    description,
+    category: input.category,
+    ward: locality,
+    location: cleanDetectedAddress || locality,
+    status: "Reported",
+    adminVerified: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (typeof reportPayload.privateLat === "number") {
+    issuePayload.lat = reportPayload.privateLat;
+  }
+  if (typeof reportPayload.privateLng === "number") {
+    issuePayload.lng = reportPayload.privateLng;
+  }
+  if (typeof reportPayload.beforeImageURL === "string") {
+    issuePayload.evidencePhotoUrl = reportPayload.beforeImageURL;
+  }
+  if (cleanMaterials && cleanMaterials.length >= 2) {
+    issuePayload.materialEstimate = cleanMaterials;
+  }
+  if (parsedMaterials.asphaltEstimateKg !== null) {
+    issuePayload.asphaltEstimateKg = parsedMaterials.asphaltEstimateKg;
+  }
+  if (parsedMaterials.estimatedCostInr !== null) {
+    issuePayload.estimatedCostInr = parsedMaterials.estimatedCostInr;
+  }
+  if (
+    typeof input.aiConfidenceScore === "number" &&
+    Number.isFinite(input.aiConfidenceScore)
+  ) {
+    issuePayload.aiConfidenceScore = Math.max(
+      0,
+      Math.min(100, Math.round(input.aiConfidenceScore))
+    );
+  } else if (typeof reportPayload.socialImpactScore === "number") {
+    issuePayload.aiConfidenceScore = Math.max(
+      0,
+      Math.min(100, Math.round(reportPayload.socialImpactScore))
+    );
+  }
+  if (cleanImageHash.length >= 8) {
+    issuePayload.imageHash = cleanImageHash;
+  }
 
   try {
     try {
       const batch = writeBatch(db);
       batch.set(reportRef, reportPayload);
       batch.set(eventRef, eventPayload);
+      batch.set(issueRef, issuePayload);
       await withTimeout(batch.commit());
     } catch (batchErr) {
       const batchMsg =
@@ -405,13 +463,12 @@ export async function createCivicReport(
       if (batchMsg.includes("quota exceeded")) {
         throw batchErr;
       }
-      // Fallback: write parent report document directly, then best-effort initial event
+      // Fallback: write parent report document directly, then best-effort event & issues mirror
       await withTimeout(setDoc(reportRef, reportPayload));
-      try {
-        await withTimeout(setDoc(eventRef, eventPayload), 10000);
-      } catch {
-        // Parent report is already persisted; initial event is optional fallback
-      }
+      await Promise.allSettled([
+        withTimeout(setDoc(eventRef, eventPayload), 10000),
+        withTimeout(setDoc(issueRef, issuePayload), 10000),
+      ]);
     }
 
     const nowIso = new Date().toISOString();

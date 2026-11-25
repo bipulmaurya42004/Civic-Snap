@@ -1,115 +1,186 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck, Sparkles, Database } from "lucide-react";
+import { useState } from "react";
+import Link from "next/link";
+import {
+  Database,
+  Lock,
+  LogIn,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
+import { canAccessAdminDashboard } from "@/lib/admin-issues-logic";
+import { LiveIssuesAdminPanel } from "@/components/admin/LiveIssuesAdminPanel";
 import { AdminWorkspace } from "@/components/admin/AdminWorkspace";
-import { JudgeDemoWorkspace } from "@/components/admin/JudgeDemoWorkspace";
 import { LoadingState } from "@/components/ui/StateViews";
 
-type DashboardTab = "judge" | "live";
+type AdminConsoleTab = "issues" | "reports";
 
 export function AdminRouterClient() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const { isAdmin, authReady } = useFirebaseAuth();
+  const { user, isAdmin, authReady, signInWithGoogle, signOutUser, busy } =
+    useFirebaseAuth();
 
-  const isJudgeQuery = searchParams.get("mode") === "judge";
-  const [activeTab, setActiveTab] = useState<DashboardTab>(
-    isJudgeQuery ? "judge" : "judge"
-  );
-  const [hasUserPickedTab, setHasUserPickedTab] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminConsoleTab>("issues");
+  const [switchingAccount, setSwitchingAccount] = useState(false);
 
-  // Respect ?mode=judge explicitly; otherwise default authorised admins to Live Firestore Queue
-  // and default guests/judges to Judge Demo Mode so the dashboard is always rich and interactive.
-  useEffect(() => {
-    if (isJudgeQuery) {
-      setActiveTab("judge");
-      return;
-    }
-    if (authReady && !hasUserPickedTab) {
-      setActiveTab(isAdmin ? "live" : "judge");
-    }
-  }, [isJudgeQuery, authReady, isAdmin, hasUserPickedTab]);
+  const hasAccess = canAccessAdminDashboard({
+    userEmail: user?.email,
+  });
 
-  const handleSwitchTab = (next: DashboardTab) => {
-    setHasUserPickedTab(true);
-    setActiveTab(next);
-    if (next === "judge" && !isJudgeQuery) {
-      router.replace("/admin?mode=judge", { scroll: false });
-    } else if (next === "live" && isJudgeQuery) {
-      router.replace("/admin", { scroll: false });
+  const handleSwitchAccount = async () => {
+    setSwitchingAccount(true);
+    try {
+      await signOutUser();
+      await signInWithGoogle();
+    } finally {
+      setSwitchingAccount(false);
     }
   };
 
-  if (!authReady && !isJudgeQuery) {
+  if (!authReady) {
     return (
       <div className="mt-6">
         <LoadingState
-          label="Loading CivicSnap verification dashboard..."
+          label="Verifying authenticated CivicSnap Admin credentials..."
           rows={3}
         />
       </div>
     );
   }
 
+  if (!hasAccess) {
+    const actionBusy = busy || switchingAccount;
+    return (
+      <section
+        data-testid="admin-access-denied"
+        aria-label="Municipal Admin Access Restricted"
+        className="mt-6 rounded-2xl border border-rose-200 bg-white p-6 shadow-xs sm:p-8"
+      >
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600">
+            <Lock size={22} aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-rose-600">
+              Access Denied · Authenticated Whitelist Only
+            </p>
+            <h2 className="mt-1 font-[var(--font-heading)] text-xl font-bold text-slate-900 sm:text-2xl">
+              Municipal Admin Access Restricted
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Sign in with an authorized CivicSnap admin email.
+            </p>
+
+            {user?.email && (
+              <p className="mt-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs text-slate-600">
+                Currently signed in as{" "}
+                <strong className="font-semibold text-slate-900">
+                  {user.email}
+                </strong>
+                , which is not authorized in{" "}
+                <code className="rounded bg-slate-200/70 px-1 py-0.5 font-mono text-[11px] text-slate-800">
+                  NEXT_PUBLIC_ADMIN_EMAILS
+                </code>
+                .
+              </p>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              {user ? (
+                <button
+                  type="button"
+                  disabled={actionBusy}
+                  onClick={() => void handleSwitchAccount()}
+                  className="inline-flex min-h-[42px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
+                >
+                  <RefreshCw
+                    size={15}
+                    className={actionBusy ? "animate-spin" : ""}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {actionBusy ? "Switching Account..." : "Switch Account"}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={actionBusy}
+                  onClick={() => void signInWithGoogle()}
+                  className="inline-flex min-h-[42px] cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
+                >
+                  <LogIn size={15} aria-hidden="true" />
+                  <span>
+                    {actionBusy ? "Signing In..." : "Sign In with Google"}
+                  </span>
+                </button>
+              )}
+
+              <Link
+                href="/dashboard"
+                className="inline-flex min-h-[42px] items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 whitespace-nowrap"
+              >
+                Citizen Dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <div className="mt-6">
-      {/* Clean Light SaaS Mode Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm">
+      {/* Authenticated Admin Queue Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-3 shadow-xs">
         <div
           role="tablist"
-          aria-label="Dashboard verification mode"
+          aria-label="Admin dashboard views"
           className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-100/90 p-1"
         >
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === "judge"}
-            onClick={() => handleSwitchTab("judge")}
-            className={`inline-flex min-h-[38px] items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
-              activeTab === "judge"
+            aria-selected={activeTab === "issues"}
+            onClick={() => setActiveTab("issues")}
+            className={`inline-flex min-h-[38px] cursor-pointer items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+              activeTab === "issues"
                 ? "bg-white text-blue-700 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <Sparkles size={15} aria-hidden="true" />
-            <span>AI Audit Queue</span>
+            <Database size={15} aria-hidden="true" />
+            <span>Real-Time Audit Feed</span>
           </button>
 
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "live"}
-            onClick={() => handleSwitchTab("live")}
-            className={`inline-flex min-h-[38px] items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
-              activeTab === "live"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <Database size={15} aria-hidden="true" />
-            <span>Audit Operations Console</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "reports"}
+              onClick={() => setActiveTab("reports")}
+              className={`inline-flex min-h-[38px] cursor-pointer items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+                activeTab === "reports"
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Sparkles size={15} aria-hidden="true" />
+              <span>Private Reports &amp; Before/After Console</span>
+            </button>
+          )}
         </div>
 
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
-            isAdmin
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-amber-200 bg-amber-50 text-amber-800"
-          }`}
-        >
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
           <ShieldCheck size={13} aria-hidden="true" />
-          {isAdmin
-            ? "Authorised Reviewer Session Active"
-            : "Read-Only Mode · Reviewer Sign-In Required"}
+          <span>Authorized Admin ({user?.email})</span>
         </span>
       </div>
 
-      {activeTab === "judge" ? (
-        <JudgeDemoWorkspace />
+      {activeTab === "issues" ? (
+        <LiveIssuesAdminPanel />
       ) : (
         <div className="mt-6">
           <AdminWorkspace />

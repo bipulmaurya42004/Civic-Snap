@@ -612,10 +612,10 @@ export function HomeLandingClient() {
                       Track 2026 Badges &amp; Certificates
                     </Link>
                     <Link
-                      href="/admin?mode=judge"
+                      href="/admin"
                       className="inline-flex items-center gap-1 font-semibold text-blue-600 transition-colors hover:text-blue-700"
                     >
-                      <span>Open Audit Verification View</span>
+                      <span>Municipal Admin Console</span>
                       <ArrowRight size={13} aria-hidden="true" />
                     </Link>
                   </div>
