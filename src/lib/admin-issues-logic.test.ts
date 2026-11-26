@@ -2,13 +2,61 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ADMIN_DEFAULT_REJECTION_NOTE,
+  NON_ADMIN_STAFF_SIGNIN_NOTICE,
   canAccessAdminDashboard,
   computeAdminIssuesKpis,
   extractMaterialMetrics,
   formatGpsCoordinates,
+  getUserRoleBadge,
   normalizeAdminIssueStatus,
+  resolvePostSignInOutcome,
   shouldAwardPointsOnApprove,
 } from "./admin-issues-logic";
+
+test("getUserRoleBadge returns Ward Admin for whitelisted emails and Citizen otherwise", () => {
+  assert.deepEqual(
+    getUserRoleBadge("auditor@bengaluru.gov.in", "auditor@bengaluru.gov.in"),
+    { isAdmin: true, label: "Ward Admin" }
+  );
+  assert.deepEqual(
+    getUserRoleBadge("citizen@gmail.com", "auditor@bengaluru.gov.in"),
+    { isAdmin: false, label: "Citizen" }
+  );
+});
+
+test("resolvePostSignInOutcome redirects whitelisted staff to /admin and warns non-whitelisted citizens", () => {
+  assert.deepEqual(
+    resolvePostSignInOutcome({
+      portalRole: "staff",
+      userEmail: "admin@civicsnap.in",
+      envAdminEmailsOverride: "admin@civicsnap.in",
+    }),
+    { redirectTo: "/admin", notice: null, isAdmin: true }
+  );
+
+  assert.deepEqual(
+    resolvePostSignInOutcome({
+      portalRole: "staff",
+      userEmail: "citizen@gmail.com",
+      envAdminEmailsOverride: "admin@civicsnap.in",
+    }),
+    {
+      redirectTo: "/dashboard",
+      notice: NON_ADMIN_STAFF_SIGNIN_NOTICE,
+      isAdmin: false,
+    }
+  );
+
+  assert.deepEqual(
+    resolvePostSignInOutcome({
+      portalRole: "citizen",
+      userEmail: "citizen@gmail.com",
+      defaultRedirect: "/report",
+      envAdminEmailsOverride: "admin@civicsnap.in",
+    }),
+    { redirectTo: "/report", notice: null, isAdmin: false }
+  );
+});
 
 test("canAccessAdminDashboard strictly requires authenticated email in NEXT_PUBLIC_ADMIN_EMAILS with zero URL bypass", () => {
   assert.equal(

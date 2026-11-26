@@ -7,7 +7,6 @@ import {
 const ALLOWED_MODELS = new Set([
   "gemini-4-hydrogen",
   "gemini-3.1-flash-lite",
-  "gemini-3.8-flash",
 ]);
 
 export function getGeminiServerModel(): string {
@@ -24,7 +23,6 @@ export function getGeminiCandidateModels(): string[] {
     primary,
     "gemini-4-hydrogen",
     "gemini-3.1-flash-lite",
-    "gemini-3.8-flash",
   ];
   return Array.from(new Set(candidates));
 }

@@ -223,6 +223,15 @@ export function ReportComposerClient() {
     useState<EngineeringInsights | null>(null);
   const [asphaltEstimateKg, setAsphaltEstimateKg] = useState<number | null>(null);
   const [estimatedCostInr, setEstimatedCostInr] = useState<number | null>(null);
+  const [protocolAudit, setProtocolAudit] = useState<{
+    severityScore: number;
+    slaPriority: string;
+    estimatedDimensions: string;
+    requiredMaterial: string;
+    laborRequirement: string;
+    hazardRiskSummary: string;
+    auditDisclaimer: string;
+  } | null>(null);
   const [auditNotice, setAuditNotice] = useState<string | null>(null);
 
   // Submission state
@@ -342,10 +351,13 @@ export function ReportComposerClient() {
     setDetectedPhotoSubject(null);
     setAsphaltEstimateKg(null);
     setEstimatedCostInr(null);
+    setProtocolAudit(null);
     setAuditNotice(null);
 
     try {
       const compactPayload = await fileToCompactBase64(targetFile, 1024);
+      const userNote =
+        voiceTranscript.trim() || description.trim() || title.trim() || "";
 
       const res = await fetch("/api/analyze-issue", {
         method: "POST",
@@ -354,6 +366,7 @@ export function ReportComposerClient() {
           imageBase64: compactPayload.base64,
           mimeType: compactPayload.mimeType,
           locality: effectiveLocality,
+          userInput: userNote || undefined,
         }),
       });
 
@@ -363,10 +376,22 @@ export function ReportComposerClient() {
         audit?: {
           is_civic_issue?: boolean;
           detected_subject?: string;
-          rejection_reason?: string;
-          category?: string;
+          rejection_reason?: string | null;
+          category?: string | null;
           normalized_category?: IssueCategory;
           severity?: string;
+          severity_score?: number | null;
+          sla_priority?: string | null;
+          ticket_title?: string | null;
+          ticket_description?: string | null;
+          engineering_estimates?: {
+            estimated_dimensions: string;
+            required_material: string;
+            estimated_repair_cost_inr: number;
+            labor_requirement: string;
+          } | null;
+          hazard_risk_summary?: string | null;
+          audit_disclaimer?: string;
           asphalt_estimate_kg?: number;
           estimated_cost_inr?: number;
           title?: string;
@@ -391,6 +416,7 @@ export function ReportComposerClient() {
       if (!res.ok || data.success === false || !data.audit) {
         setPhotoAuditStatus("error");
         setEngineeringInsights(null);
+        setProtocolAudit(null);
         const errMsg =
           data.error || `Photo analysis failed (HTTP ${res.status}). Please try again.`;
         setPhotoError(errMsg);
@@ -409,6 +435,7 @@ export function ReportComposerClient() {
         setPhotoRejectionReason(reason);
         setPhotoError(null);
         setEngineeringInsights(null);
+        setProtocolAudit(null);
         setAuditNotice(null);
         return { accepted: false, reason };
       }
@@ -420,10 +447,14 @@ export function ReportComposerClient() {
           ? Math.round(audit.asphalt_estimate_kg)
           : null;
       const costInr =
-        typeof audit.estimated_cost_inr === "number" && audit.estimated_cost_inr > 0
-          ? Math.round(audit.estimated_cost_inr)
-          : null;
+        typeof audit.engineering_estimates?.estimated_repair_cost_inr === "number" &&
+        audit.engineering_estimates.estimated_repair_cost_inr > 0
+          ? Math.round(audit.engineering_estimates.estimated_repair_cost_inr)
+          : typeof audit.estimated_cost_inr === "number" && audit.estimated_cost_inr > 0
+            ? Math.round(audit.estimated_cost_inr)
+            : null;
       const materialText =
+        audit.engineering_estimates?.required_material ||
         audit.material_estimate ||
         [
           asphaltKg ? `~${asphaltKg} kg Asphalt` : null,
@@ -433,12 +464,30 @@ export function ReportComposerClient() {
           .join(" · ") ||
         "Field repair estimate ready";
 
+      const resolvedTitle = audit.ticket_title || audit.title || "";
+      const resolvedDesc = audit.ticket_description || audit.summary || "";
+
       setPhotoAuditStatus("verified");
       setCategory(mappedCategory);
-      if (audit.title && !title.trim()) setTitle(audit.title);
-      if (audit.summary && !description.trim()) setDescription(audit.summary);
+      if (resolvedTitle && !title.trim()) setTitle(resolvedTitle);
+      if (resolvedDesc && !description.trim()) setDescription(resolvedDesc);
       setAsphaltEstimateKg(asphaltKg);
       setEstimatedCostInr(costInr);
+      if (audit.engineering_estimates) {
+        setProtocolAudit({
+          severityScore: audit.severity_score ?? 7,
+          slaPriority: audit.sla_priority ?? "P2 - High (<48h)",
+          estimatedDimensions: audit.engineering_estimates.estimated_dimensions,
+          requiredMaterial: audit.engineering_estimates.required_material,
+          laborRequirement: audit.engineering_estimates.labor_requirement,
+          hazardRiskSummary:
+            audit.hazard_risk_summary ??
+            "Elevated commuter safety risk until remediated.",
+          auditDisclaimer:
+            audit.audit_disclaimer ??
+            "Independent estimate generated by CivicSnap Open Protocol. Not an official municipal tender quotation.",
+        });
+      }
       setEngineeringInsights({
         surroundingLandmarks:
           audit.surrounding_landmarks || `${effectiveLocality} street corridor`,
@@ -446,26 +495,30 @@ export function ReportComposerClient() {
         socialImpactScore:
           typeof audit.social_impact_score === "number"
             ? audit.social_impact_score
-            : audit.severity === "Critical"
-              ? 90
-              : audit.severity === "High"
-                ? 78
-                : 62,
+            : typeof audit.severity_score === "number"
+              ? Math.min(100, Math.max(10, audit.severity_score * 10))
+              : audit.severity === "Critical"
+                ? 90
+                : audit.severity === "High"
+                  ? 78
+                  : 62,
         economicCostOfDelay:
+          audit.hazard_risk_summary ||
           audit.economic_cost_of_delay ||
           (costInr
             ? `₹${(costInr * 4).toLocaleString("en-IN")}+ est. 30-day delay impact`
             : "Ongoing commuter disruption if unaddressed"),
       });
       setAuditNotice(
-        `CivicSnap AI verified genuine ${audit.category || getCategoryLabel(mappedCategory)} issue${
-          asphaltKg ? ` (~${asphaltKg} kg asphalt` : ""
-        }${costInr ? `${asphaltKg ? ", " : " ("}est. ₹${costInr.toLocaleString("en-IN")})` : asphaltKg ? ")" : ""}.`
+        `Independent Civic Audit verified ${audit.category || getCategoryLabel(mappedCategory)}${
+          audit.sla_priority ? ` · ${audit.sla_priority}` : ""
+        }${costInr ? ` · Est. ₹${costInr.toLocaleString("en-IN")}` : ""}.`
       );
       return { accepted: true };
     } catch (err) {
       setPhotoAuditStatus("error");
       setEngineeringInsights(null);
+      setProtocolAudit(null);
       const errMsg =
         err instanceof Error && err.message
           ? `Could not complete AI photo audit: ${err.message}`
@@ -498,6 +551,7 @@ export function ReportComposerClient() {
     setEngineeringInsights(null);
     setAsphaltEstimateKg(null);
     setEstimatedCostInr(null);
+    setProtocolAudit(null);
     setAuditNotice(null);
     setDuplicateImageDetected(false);
     setNeedsReviewFlag(false);
@@ -1992,7 +2046,8 @@ export function ReportComposerClient() {
 
             {/* Authentic CivicSnap AI Estimator Chip — NEVER invents scores or materials before real verification */}
             <div
-              className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3.5 ${
+              data-testid="civicsnap-ai-audit-card"
+              className={`mt-4 rounded-xl border p-3.5 ${
                 photoAuditStatus === "rejected"
                   ? "border-rose-300 bg-rose-50/70"
                   : photoAuditStatus === "verified"
@@ -2000,73 +2055,97 @@ export function ReportComposerClient() {
                     : "border-blue-200/80 bg-slate-50"
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                    photoAuditStatus === "rejected"
-                      ? "bg-rose-100 text-rose-700"
-                      : photoAuditStatus === "verified"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-blue-600/10 text-blue-700"
-                  }`}
-                >
-                  {photoAuditStatus === "checking" ? (
-                    <Loader2 size={18} className="animate-spin" aria-hidden="true" />
-                  ) : photoAuditStatus === "rejected" ? (
-                    <AlertCircle size={18} aria-hidden="true" />
-                  ) : (
-                    <Gauge size={18} aria-hidden="true" />
-                  )}
-                </div>
-                <div>
-                  <p
-                    className={`text-[11px] font-semibold uppercase tracking-wide ${
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                       photoAuditStatus === "rejected"
-                        ? "text-rose-700"
+                        ? "bg-rose-100 text-rose-700"
                         : photoAuditStatus === "verified"
-                          ? "text-emerald-700"
-                          : "text-blue-600"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-blue-600/10 text-blue-700"
                     }`}
                   >
-                    CivicSnap AI Material &amp; Authenticity Audit
-                  </p>
-                  <p className="text-sm font-bold text-slate-900">
-                    {photoAuditStatus === "checking"
-                      ? "Inspecting photo authenticity..."
-                      : photoAuditStatus === "rejected"
-                        ? "Invalid Civic Photo · Score 0/100"
-                        : urgencyScore !== null
-                          ? `Verified Urgency Score: ${urgencyScore}/100`
-                          : "Awaiting genuine photo verification"}
-                  </p>
+                    {photoAuditStatus === "checking" ? (
+                      <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+                    ) : photoAuditStatus === "rejected" ? (
+                      <AlertCircle size={18} aria-hidden="true" />
+                    ) : (
+                      <Gauge size={18} aria-hidden="true" />
+                    )}
+                  </div>
+                  <div>
+                    <p
+                      className={`text-[11px] font-semibold uppercase tracking-wide ${
+                        photoAuditStatus === "rejected"
+                          ? "text-rose-700"
+                          : photoAuditStatus === "verified"
+                            ? "text-emerald-700"
+                            : "text-blue-600"
+                      }`}
+                    >
+                      Independent Civic Audit &amp; Ward Triage Protocol
+                    </p>
+                    <p className="text-sm font-bold text-slate-900">
+                      {photoAuditStatus === "checking"
+                        ? "Inspecting photo authenticity & Bengaluru civil rates..."
+                        : photoAuditStatus === "rejected"
+                          ? "Invalid Civic Photo · Metrics Nullified"
+                          : protocolAudit
+                            ? `Severity ${protocolAudit.severityScore}/10 · ${protocolAudit.slaPriority}`
+                            : urgencyScore !== null
+                              ? `Verified Urgency Score: ${urgencyScore}/100`
+                              : "Awaiting genuine outdoor photo verification"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {photoAuditStatus === "verified" && asphaltEstimateKg !== null && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      ~{asphaltEstimateKg} kg Asphalt
+                    </span>
+                  )}
+                  {photoAuditStatus === "verified" && estimatedCostInr !== null && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      Est. ₹{estimatedCostInr.toLocaleString("en-IN")}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                    <Wrench size={12} className="text-blue-600" aria-hidden="true" />
+                    {photoAuditStatus === "rejected"
+                      ? "No repair material — invalid image"
+                      : estimatedMaterialShort ??
+                        "Calculated after CivicSnap AI verifies photo"}
+                  </span>
+                  {photoAuditStatus === "verified" && priorityZoneCheck.isHighPriority && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
+                      <Siren size={12} aria-hidden="true" />
+                      High Priority Zone
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {photoAuditStatus === "verified" && asphaltEstimateKg !== null && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                    ~{asphaltEstimateKg} kg Asphalt
-                  </span>
-                )}
-                {photoAuditStatus === "verified" && estimatedCostInr !== null && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                    Est. ₹{estimatedCostInr.toLocaleString("en-IN")}
-                  </span>
-                )}
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                  <Wrench size={12} className="text-blue-600" aria-hidden="true" />
-                  {photoAuditStatus === "rejected"
-                    ? "No repair material — invalid image"
-                    : estimatedMaterialShort ??
-                      "Calculated after CivicSnap AI verifies photo"}
-                </span>
-                {photoAuditStatus === "verified" && priorityZoneCheck.isHighPriority && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
-                    <Siren size={12} aria-hidden="true" />
-                    High Priority Zone
-                  </span>
-                )}
-              </div>
+              {photoAuditStatus === "verified" && protocolAudit && (
+                <div className="mt-3 grid gap-2 border-t border-emerald-200/70 pt-3 text-xs text-slate-700 sm:grid-cols-2">
+                  <div className="rounded-lg bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-200/70">
+                    <span className="font-semibold text-slate-900">Dimensions: </span>
+                    {protocolAudit.estimatedDimensions}
+                  </div>
+                  <div className="rounded-lg bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-200/70">
+                    <span className="font-semibold text-slate-900">Labor: </span>
+                    {protocolAudit.laborRequirement}
+                  </div>
+                  <div className="rounded-lg bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-200/70 sm:col-span-2">
+                    <span className="font-semibold text-slate-900">Hazard Risk: </span>
+                    {protocolAudit.hazardRiskSummary}
+                  </div>
+                  <p className="text-[11px] italic text-slate-500 sm:col-span-2">
+                    {protocolAudit.auditDisclaimer}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Editable Fields */}

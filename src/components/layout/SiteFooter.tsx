@@ -6,6 +6,7 @@ import {
   Facebook,
   Instagram,
   ShieldCheck,
+  Twitter,
 } from "lucide-react";
 import { CivicSnapLogo } from "@/components/brand/CivicSnapLogo";
 
@@ -47,6 +48,13 @@ const SOCIAL_LINKS = [
     href: "https://www.facebook.com/profile.php?id=61596559902939",
     icon: Facebook,
     hoverClass: "hover:border-sky-300/70 hover:bg-sky-500/25 hover:text-white",
+  },
+  {
+    label: "Twitter",
+    ariaLabel: "Follow CivicSnap on Twitter",
+    href: "https://x.com/civicsnap",
+    icon: Twitter,
+    hoverClass: "hover:border-sky-300/80 hover:bg-sky-400/25 hover:text-white",
   },
 ] as const;
 

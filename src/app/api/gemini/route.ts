@@ -18,6 +18,13 @@ import {
   validateSafeImageSourceUrl,
 } from "@/lib/ai-civic-helpers";
 import {
+  AUDIT_DISCLAIMER_TEXT,
+  CIVICSNAP_AI_SYSTEM_PROMPT,
+  mapProtocolCategoryToIssueCategory,
+  normalizeBeforeAfterVerification,
+  normalizeCivicAuditResponse,
+} from "@/lib/civicsnap-ai-protocol";
+import {
   createGeminiServerClient,
   generateContentResilient,
   sanitizeGeminiErrorMessage,
@@ -269,29 +276,37 @@ export async function POST(request: NextRequest) {
             ...(useThinkingConfig
               ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
               : {}),
-            systemInstruction:
-              "You convert spoken Hindi/Hinglish civic complaints into concise, professional English civic issue reports. Always choose the best matching Category among Pothole, Garbage, Streetlight, or Other.",
+            systemInstruction: CIVICSNAP_AI_SYSTEM_PROMPT,
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                title: {
+                ticket_title: {
                   type: Type.STRING,
                   description:
-                    "Concise professional English report title (5 to 110 characters).",
+                    "Formal 6-10 word engineering ticket title in professional English (Task 2).",
                 },
                 category: {
                   type: Type.STRING,
                   description:
-                    "Exactly one of: Pothole, Garbage, Streetlight, Other.",
+                    "One of: Pothole / Road Damage, Open Manhole, Garbage Blackspot, Broken Footpath, Waterlogging, or Streetlight.",
                 },
-                description: {
+                ticket_description: {
                   type: Type.STRING,
                   description:
-                    "Clear, factual English description of the civic issue (20 to 500 characters).",
+                    "Objective municipal-grade engineering description translated from Hinglish/Kannada-English input (20 to 500 characters).",
+                },
+                audit_disclaimer: {
+                  type: Type.STRING,
+                  description: AUDIT_DISCLAIMER_TEXT,
                 },
               },
-              required: ["title", "category", "description"],
+              required: [
+                "ticket_title",
+                "category",
+                "ticket_description",
+                "audit_disclaimer",
+              ],
             },
           },
         })
@@ -299,14 +314,28 @@ export async function POST(request: NextRequest) {
 
       const rawText = extractJsonObject(response.text ?? "");
       const parsedJson = JSON.parse(rawText) as {
+        ticket_title?: string;
         title?: string;
         category?: string;
+        ticket_description?: string;
         description?: string;
+        audit_disclaimer?: string;
       };
 
-      const normalizedCategory = normalizeAiCategory(parsedJson.category);
-      const title = (parsedJson.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-      const description = (parsedJson.description ?? "").trim().slice(0, 600);
+      const normalizedCategory = mapProtocolCategoryToIssueCategory(
+        parsedJson.category
+      );
+      const title = (parsedJson.ticket_title ?? parsedJson.title ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 120);
+      const description = (
+        parsedJson.ticket_description ??
+        parsedJson.description ??
+        ""
+      )
+        .trim()
+        .slice(0, 600);
 
       if (title.length < 5 || description.length < 10) {
         return NextResponse.json(
@@ -317,9 +346,13 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         title,
+        ticket_title: title,
         category: normalizedCategory,
         categoryDisplay: getPromptCategoryName(normalizedCategory),
+        protocolCategory: parsedJson.category ?? getPromptCategoryName(normalizedCategory),
         description,
+        ticket_description: description,
+        audit_disclaimer: AUDIT_DISCLAIMER_TEXT,
         demoMode: false,
       });
     } catch (error) {
@@ -383,79 +416,98 @@ export async function POST(request: NextRequest) {
             ...(useThinkingConfig
               ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
               : {}),
-            systemInstruction:
-              "You are CivicSnap AI, a strict, human-level municipal civil inspector. FIRST determine if the uploaded image genuinely depicts an outdoor public civic infrastructure or sanitation issue (pothole, damaged road, overflowing garbage, broken streetlight, open drain, waterlogging, broken footpath, fallen tree/pole, leaking public pipe). REJECT laptops, phones, screens, indoor desks/rooms, selfies, people, pets, food, documents, screenshots, memes, random objects, blank images, or clean undamaged roads by setting isGenuineCivicIssue = false, socialImpactScore = 0, materialEstimate = '', and writing an honest detectedSubject + rejectionReason.",
+            systemInstruction: CIVICSNAP_AI_SYSTEM_PROMPT,
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
               properties: {
-                isGenuineCivicIssue: {
+                is_civic_issue: {
                   type: Type.BOOLEAN,
                   description:
-                    "True ONLY if the photo genuinely shows a real outdoor public civic infrastructure or municipal sanitation problem. Must be false for laptops, indoor items, selfies, screens, screenshots, pets, documents, random objects, or clean undamaged roads.",
+                    "True ONLY if the photo genuinely shows an outdoor public civic/road hazard.",
                 },
-                detectedSubject: {
+                detected_subject: {
                   type: Type.STRING,
                   description:
-                    "Honest plain-English description of what is actually visible in the photo (max 160 chars).",
+                    "Honest plain-English description of what is actually visible in the photo.",
                 },
-                rejectionReason: {
+                rejection_reason: {
                   type: Type.STRING,
+                  nullable: true,
                   description:
-                    "If isGenuineCivicIssue is false, a clear 1-sentence human explanation of why this photo cannot be accepted as a civic issue. Empty string if genuine.",
+                    "Concise rejection reason if is_civic_issue is false; null if genuine.",
                 },
                 confidence: {
                   type: Type.NUMBER,
                   description: "Confidence percentage from 0 to 100.",
                 },
-                title: {
-                  type: Type.STRING,
-                  description:
-                    "Concise English issue title (5-110 chars) if genuine; empty string if rejected.",
-                },
                 category: {
                   type: Type.STRING,
+                  nullable: true,
                   description:
-                    "Exactly one of: Pothole, Garbage, Streetlight, Other.",
+                    "One of: Pothole / Road Damage, Open Manhole, Garbage Blackspot, Broken Footpath, Waterlogging. Null if rejected.",
                 },
-                description: {
+                ticket_title: {
                   type: Type.STRING,
+                  nullable: true,
                   description:
-                    "Factual English description of the visible civic issue (20-450 chars) if genuine; empty string if rejected.",
+                    "Formal 6-10 word title in professional English; null if rejected.",
                 },
-                surroundingLandmarks: {
+                ticket_description: {
                   type: Type.STRING,
+                  nullable: true,
                   description:
-                    "Visible surrounding landmarks or road context if genuine; empty string if rejected.",
+                    "Objective engineering description of the hazard; null if rejected.",
                 },
-                materialEstimate: {
+                severity_score: {
+                  type: Type.INTEGER,
+                  nullable: true,
+                  description: "Severity score 1 to 10; null if rejected.",
+                },
+                sla_priority: {
                   type: Type.STRING,
+                  nullable: true,
                   description:
-                    "Realistic estimate of repair materials and crew hours ONLY if genuine; empty string if rejected.",
+                    "P1 - Critical (<24h), P2 - High (<48h), or P3 - Routine (<7d); null if rejected.",
                 },
-                socialImpactScore: {
-                  type: Type.NUMBER,
-                  description:
-                    "Calibrated 1-100 urgency score if genuine; MUST be 0 if isGenuineCivicIssue is false.",
+                engineering_estimates: {
+                  type: Type.OBJECT,
+                  nullable: true,
+                  properties: {
+                    estimated_dimensions: { type: Type.STRING },
+                    required_material: { type: Type.STRING },
+                    estimated_repair_cost_inr: { type: Type.NUMBER },
+                    labor_requirement: { type: Type.STRING },
+                  },
+                  required: [
+                    "estimated_dimensions",
+                    "required_material",
+                    "estimated_repair_cost_inr",
+                    "labor_requirement",
+                  ],
                 },
-                economicCostOfDelay: {
+                hazard_risk_summary: {
                   type: Type.STRING,
-                  description:
-                    "Estimated 30-day economic/safety impact in ₹ ONLY if genuine; empty string if rejected.",
+                  nullable: true,
+                },
+                audit_disclaimer: {
+                  type: Type.STRING,
+                  description: AUDIT_DISCLAIMER_TEXT,
                 },
               },
               required: [
-                "isGenuineCivicIssue",
-                "detectedSubject",
-                "rejectionReason",
+                "is_civic_issue",
+                "detected_subject",
+                "rejection_reason",
                 "confidence",
-                "title",
                 "category",
-                "description",
-                "surroundingLandmarks",
-                "materialEstimate",
-                "socialImpactScore",
-                "economicCostOfDelay",
+                "ticket_title",
+                "ticket_description",
+                "severity_score",
+                "sla_priority",
+                "engineering_estimates",
+                "hazard_risk_summary",
+                "audit_disclaimer",
               ],
             },
           },
@@ -463,21 +515,9 @@ export async function POST(request: NextRequest) {
       );
 
       const rawText = extractJsonObject(response.text ?? "");
-      let parsedJson: {
-        isGenuineCivicIssue?: boolean;
-        detectedSubject?: string;
-        rejectionReason?: string;
-        confidence?: number;
-        title?: string;
-        category?: string;
-        description?: string;
-        surroundingLandmarks?: string;
-        materialEstimate?: string;
-        socialImpactScore?: number | string;
-        economicCostOfDelay?: string;
-      } = {};
+      let parsedJson: Record<string, unknown> = {};
       try {
-        parsedJson = JSON.parse(rawText) as typeof parsedJson;
+        parsedJson = JSON.parse(rawText) as Record<string, unknown>;
       } catch (parseErr) {
         console.error(
           "[CivicSnap AI] analyze_photo JSON parse error:",
@@ -489,28 +529,31 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const detectedSubject = (parsedJson.detectedSubject ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 180);
-      const isGenuine = parsedJson.isGenuineCivicIssue === true;
+      const protocolAudit = normalizeCivicAuditResponse(
+        parsedJson,
+        payload.locality || "Bengaluru"
+      );
+      const detectedSubject =
+        typeof parsedJson.detected_subject === "string"
+          ? parsedJson.detected_subject.replace(/\s+/g, " ").trim().slice(0, 180)
+          : "";
       const confidence = Math.min(
         100,
-        Math.max(0, Math.round(Number(parsedJson.confidence ?? (isGenuine ? 85 : 95)) || 0))
+        Math.max(
+          0,
+          Math.round(
+            Number(parsedJson.confidence ?? (protocolAudit.is_civic_issue ? 90 : 95)) ||
+              0
+          )
+        )
       );
 
-      // Strict human-brain rejection branch: zero fake scores, zero fake material estimates!
-      if (!isGenuine) {
-        const rejectionReason =
-          (parsedJson.rejectionReason ?? "").replace(/\s+/g, " ").trim().slice(0, 280) ||
-          (detectedSubject
-            ? `This image appears to show "${detectedSubject}" instead of an outdoor public civic issue. Please upload a real photo of a pothole, garbage dump, broken streetlight, or street hazard.`
-            : "This image does not show a recognizable public civic infrastructure issue. Please upload a clear outdoor photo of the actual problem.");
-
+      if (!protocolAudit.is_civic_issue) {
         return NextResponse.json({
+          ...protocolAudit,
           isGenuineCivicIssue: false,
           detectedSubject: detectedSubject || "Non-civic / irrelevant image",
-          rejectionReason,
+          rejectionReason: protocolAudit.rejection_reason ?? "",
           confidence,
           title: "",
           category: "other",
@@ -524,52 +567,28 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const normalizedCategory = normalizeAiCategory(parsedJson.category);
-      const title = (parsedJson.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-      const description = (parsedJson.description ?? "").trim().slice(0, 600);
-      const surroundingLandmarks = (parsedJson.surroundingLandmarks ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 200);
-      const materialEstimate = (parsedJson.materialEstimate ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 240);
-      const socialImpactScore = clampSocialImpactScore(parsedJson.socialImpactScore);
-      const economicCostOfDelay = (parsedJson.economicCostOfDelay ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 240);
-
-      if (title.length < 5 || description.length < 10) {
-        return NextResponse.json(
-          { error: "CivicSnap AI returned an incomplete photo analysis. Please try again." },
-          { status: 502 }
-        );
-      }
+      const normalizedCategory = mapProtocolCategoryToIssueCategory(
+        protocolAudit.category
+      );
+      const est = protocolAudit.engineering_estimates!;
+      const socialImpactScore = clampSocialImpactScore(
+        (protocolAudit.severity_score ?? 7) * 10
+      );
 
       return NextResponse.json({
+        ...protocolAudit,
         isGenuineCivicIssue: true,
-        detectedSubject: detectedSubject || title,
+        detectedSubject: detectedSubject || protocolAudit.ticket_title!,
         rejectionReason: "",
         confidence,
-        title,
+        title: protocolAudit.ticket_title!,
         category: normalizedCategory,
-        categoryDisplay: getPromptCategoryName(normalizedCategory),
-        description,
-        surroundingLandmarks:
-          surroundingLandmarks.length >= 2
-            ? surroundingLandmarks
-            : "Local neighborhood street corridor",
-        materialEstimate:
-          materialEstimate.length >= 2
-            ? materialEstimate
-            : "Field crew inspection and standard patching materials (2–3 labor hours)",
+        categoryDisplay: protocolAudit.category!,
+        description: protocolAudit.ticket_description!,
+        surroundingLandmarks: `${payload.locality || "Bengaluru"} · ${protocolAudit.sla_priority}`,
+        materialEstimate: `${est.required_material} · Est. ₹${est.estimated_repair_cost_inr.toLocaleString("en-IN")} · ${est.labor_requirement}`,
         socialImpactScore,
-        economicCostOfDelay:
-          economicCostOfDelay.length >= 2
-            ? economicCostOfDelay
-            : "Ongoing commuter disruption and minor vehicle wear if unaddressed for 30 days",
+        economicCostOfDelay: protocolAudit.hazard_risk_summary!,
         demoMode: false,
       });
     } catch (error) {
@@ -624,8 +643,7 @@ export async function POST(request: NextRequest) {
             ...(useThinkingConfig
               ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
               : {}),
-            systemInstruction:
-              "You are CivicSnap AI's strict municipal intake moderator. Reject fake, random, gibberish, test, spam, joke, or non-civic personal gadget complaints. Approve ONLY genuine public civic infrastructure/sanitation reports in English, Hindi, or Hinglish.",
+            systemInstruction: CIVICSNAP_AI_SYSTEM_PROMPT,
             responseMimeType: "application/json",
             responseSchema: {
               type: Type.OBJECT,
@@ -778,28 +796,37 @@ export async function POST(request: NextRequest) {
           ...(useThinkingConfig
             ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
             : {}),
-          systemInstruction:
-            'You are an impartial civic repair verification inspector. Compare the original issue image and the repair proof image carefully. Reply strictly as JSON with verdict ("Verified" or "Flagged"), aiConfidenceScore (integer 0-100), and a single clear 1-sentence reason.',
+          systemInstruction: CIVICSNAP_AI_SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              verdict: {
-                type: Type.STRING,
-                description: 'Must be exactly "Verified" or "Flagged".',
+              fix_verified: {
+                type: Type.BOOLEAN,
+                description:
+                  "True ONLY if the specific civic defect has been properly filled/paved/resolved AND match_confidence_score >= 85.",
               },
-              aiConfidenceScore: {
+              match_confidence_score: {
                 type: Type.NUMBER,
                 description:
-                  "Calibrated AI Confidence Score from 0 to 100 (90+ only when clear, genuine repair is visible at the same site).",
+                  "Match confidence percentage from 0 to 100. Only pass (fix_verified = true) when >= 85.",
               },
               reason: {
                 type: Type.STRING,
                 description:
-                  "A clear 1-sentence explanation of why the fix is Verified or Flagged.",
+                  "Objective 1-sentence engineering verification rationale.",
+              },
+              audit_disclaimer: {
+                type: Type.STRING,
+                description: AUDIT_DISCLAIMER_TEXT,
               },
             },
-            required: ["verdict", "aiConfidenceScore", "reason"],
+            required: [
+              "fix_verified",
+              "match_confidence_score",
+              "reason",
+              "audit_disclaimer",
+            ],
           },
         },
       })
@@ -807,36 +834,27 @@ export async function POST(request: NextRequest) {
 
     const rawText = extractJsonObject(response.text ?? "");
     let parsedResult: {
+      fix_verified?: boolean;
+      match_confidence_score?: number;
       verdict?: string;
       aiConfidenceScore?: number;
       reason?: string;
     } = {};
     try {
-      parsedResult = JSON.parse(rawText) as {
-        verdict?: string;
-        aiConfidenceScore?: number;
-        reason?: string;
-      };
+      parsedResult = JSON.parse(rawText) as typeof parsedResult;
     } catch {
-      parsedResult = { verdict: rawText };
+      const legacy = parseVerificationVerdict(rawText);
+      parsedResult = {
+        fix_verified: legacy.verdict === "Verified",
+        verdict: legacy.verdict,
+        reason: legacy.reason,
+      };
     }
 
-    const normalized = parseVerificationVerdict(
-      parsedResult.verdict,
-      parsedResult.reason
-    );
-    const fallbackConfidence =
-      normalized.verificationStatus === "verified" ? 93 : 44;
-    const rawConfidence = Number(parsedResult.aiConfidenceScore);
-    const aiConfidenceScore = Number.isFinite(rawConfidence)
-      ? Math.min(100, Math.max(0, Math.round(rawConfidence)))
-      : fallbackConfidence;
+    const verifiedOutput = normalizeBeforeAfterVerification(parsedResult);
 
     return NextResponse.json({
-      verdict: normalized.verdict,
-      verificationStatus: normalized.verificationStatus,
-      aiConfidenceScore,
-      reason: normalized.reason,
+      ...verifiedOutput,
       demoMode: false,
     });
   } catch (error) {

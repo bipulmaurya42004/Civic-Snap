@@ -77,7 +77,7 @@ export const DEMO_ISSUES: readonly PublicIssueRecord[] = [
     createdAt: "2026-11-16T07:45:00.000Z",
     updatedAt: "2026-11-19T11:10:00.000Z",
     demoImageUrl: "/demo/waste.jpg",
-    demoImageAlt: "Sample overflowing municipal waste bin and stacked garbage bags on a sidewalk",
+    demoImageAlt: "Sample overflowing civic waste bin and stacked garbage bags on a sidewalk",
     lat: 12.9298,
     lng: 77.6203,
     detectedAddress: "80 Feet Rd, Koramangala 4th Block",
@@ -85,7 +85,7 @@ export const DEMO_ISSUES: readonly PublicIssueRecord[] = [
     surroundingLandmarks:
       "Busy neighborhood market footpath adjacent to local food vendors and hospital clinic entrance",
     materialEstimate:
-      "1 municipal compactor pickup, ~25L surface disinfectant, 1 replacement 240L bin liner, 2 sanitation workers (2 labor hours)",
+      "1 waste compactor pickup, ~25L surface disinfectant, 1 replacement 240L bin liner, 2 sanitation workers (2 labor hours)",
     socialImpactScore: 79,
     economicCostOfDelay:
       "Est. ₹18,000–₹35,000 over 30 days in sanitation health risks, pest cleanup, and lost shopfront footfall",

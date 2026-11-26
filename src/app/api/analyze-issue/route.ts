@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ThinkingLevel, Type } from "@google/genai";
 import {
-  clampSocialImpactScore,
-  getPromptCategoryName,
-  normalizeAiCategory,
-} from "@/lib/ai-civic-helpers";
+  AUDIT_DISCLAIMER_TEXT,
+  CIVICSNAP_AI_SYSTEM_PROMPT,
+  extractAsphaltKgFromMaterial,
+  mapProtocolCategoryToIssueCategory,
+  normalizeCivicAuditResponse,
+  severityScoreToLegacyLabel,
+} from "@/lib/civicsnap-ai-protocol";
 import {
   createGeminiServerClient,
   generateContentResilient,
@@ -36,21 +39,6 @@ function extractJsonObject(rawText: string): string {
     return stripped.slice(firstBrace, lastBrace + 1);
   }
   return stripped;
-}
-
-function normalizeSeverity(
-  raw: string | undefined,
-  score: number
-): "Critical" | "High" | "Medium" | "Low" {
-  const lower = (raw ?? "").trim().toLowerCase();
-  if (lower.includes("crit")) return "Critical";
-  if (lower.includes("high")) return "High";
-  if (lower.includes("med")) return "Medium";
-  if (lower.includes("low")) return "Low";
-  if (score >= 85) return "Critical";
-  if (score >= 65) return "High";
-  if (score >= 40) return "Medium";
-  return "Low";
 }
 
 function parseBase64Input(
@@ -97,9 +85,10 @@ function parseBase64Input(
 }
 
 /**
- * Clean, public Next.js POST endpoint for live-captured civic photo analysis.
- * Zero firebase-admin imports; resilient model fallback on 503/High Demand and
- * graceful handling for 429/RESOURCE_EXHAUSTED so live judging never crashes.
+ * CivicSnap AI Independent Civic Audit & Ward Triage Protocol endpoint.
+ * Executes Task 1 (Anti-Spam & Image Validity Check), Task 2 (Hinglish to
+ * Formal Civic Translation when userInput is provided), and Task 3 (Bengaluru
+ * Civil Engineering & Cost Estimation) in strict pure JSON.
  */
 export async function POST(request: NextRequest) {
   let locality = "Bengaluru";
@@ -109,13 +98,14 @@ export async function POST(request: NextRequest) {
       imageBase64?: unknown;
       mimeType?: unknown;
       locality?: unknown;
+      userInput?: unknown;
     };
     try {
       body = (await request.json()) as typeof body;
     } catch {
       return NextResponse.json(
         { success: false, error: "Invalid JSON request body." },
-        { status: 200 }
+        { status: 400 }
       );
     }
 
@@ -123,13 +113,17 @@ export async function POST(request: NextRequest) {
     if (parsedImage.error || !parsedImage.base64 || !parsedImage.mimeType) {
       return NextResponse.json(
         { success: false, error: parsedImage.error ?? "Invalid image input." },
-        { status: 200 }
+        { status: 400 }
       );
     }
 
     if (typeof body?.locality === "string" && body.locality.trim()) {
       locality = body.locality.trim().slice(0, 80);
     }
+    const userNote =
+      typeof body?.userInput === "string"
+        ? body.userInput.replace(/\s+/g, " ").trim().slice(0, 600)
+        : "";
 
     const ai = createGeminiServerClient();
     if (!ai) {
@@ -139,16 +133,18 @@ export async function POST(request: NextRequest) {
           error:
             "GEMINI_API_KEY is not configured on the server. Please add GEMINI_API_KEY in Settings > Secrets and retry.",
         },
-        { status: 200 }
+        { status: 503 }
       );
     }
 
     const promptText = [
-      `Inspect this live-captured photo from ${locality}, Bengaluru as a strict civic infrastructure auditor.`,
-      "Step 1 (Authenticity Gate): Decide if this photo genuinely depicts a real outdoor public civic infrastructure or sanitation hazard (pothole, cracked/broken road asphalt, overflowing garbage/waste pile, broken/unlit streetlight, open/clogged drain, waterlogging, broken footpath, fallen tree/pole, leaking public water pipe).",
-      "STRICTLY REJECT (set is_civic_issue = false) any computer screen, laptop, code editor, browser window, screenshot, mobile phone screen, indoor room/desk/wall/ceiling, selfie, portrait/person, pet, food, document, meme, blank/blurry unreadable photo, or clean undamaged road.",
-      "Step 2 (Engineering Audit): ONLY if is_civic_issue is true, provide a realistic category (Pothole, Garbage, Streetlight, or Other), severity (Critical, High, Medium, Low), asphalt_estimate_kg (integer kg, 0 if not road damage), estimated_cost_inr (integer INR), concise title, clear 2-sentence summary, surrounding_landmarks, material_estimate, social_impact_score (1-100), and economic_cost_of_delay.",
-      "If is_civic_issue is false, set asphalt_estimate_kg = 0, estimated_cost_inr = 0, social_impact_score = 0, and write a clear, specific rejection_reason describing what you actually saw.",
+      `Run the Independent Civic Audit & Ward Triage Protocol for this image captured in ${locality}, Bengaluru.`,
+      userNote
+        ? `Citizen colloquial/Hinglish note to translate & formalize (Task 2): "${userNote}"`
+        : "No additional colloquial text note was provided; derive ticket_title and ticket_description directly from the visual civic defect.",
+      "Perform Task 1 (Anti-Spam & Image Validity Check), Task 2 (Hinglish to Formal Civic Translation if applicable), and Task 3 (Bengaluru Standard Rates Civil Engineering & Cost Estimation).",
+      "If the image is an indoor photo, selfie, meme, laptop/phone screen, animal, food, document, clean undamaged road, or irrelevant screenshot, set is_civic_issue = false, provide a concise rejection_reason describing what you actually saw, and set category, ticket_title, ticket_description, severity_score, sla_priority, engineering_estimates, and hazard_risk_summary to null.",
+      `Always set audit_disclaimer to: "${AUDIT_DISCLAIMER_TEXT}"`,
     ].join("\n");
 
     const response = await generateContentResilient(
@@ -170,8 +166,7 @@ export async function POST(request: NextRequest) {
           ...(useThinkingConfig
             ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
             : {}),
-          systemInstruction:
-            "You are CivicSnap AI, an independent Bengaluru public infrastructure vision auditor. Always return strict JSON matching the schema. Never invent repair metrics for non-civic images.",
+          systemInstruction: CIVICSNAP_AI_SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -179,82 +174,104 @@ export async function POST(request: NextRequest) {
               is_civic_issue: {
                 type: Type.BOOLEAN,
                 description:
-                  "True ONLY if the photo clearly shows a real outdoor public civic infrastructure or sanitation problem.",
+                  "True ONLY if the image shows a genuine outdoor civic/road hazard.",
+              },
+              rejection_reason: {
+                type: Type.STRING,
+                nullable: true,
+                description:
+                  "Concise reason if is_civic_issue is false; null if genuine.",
               },
               detected_subject: {
                 type: Type.STRING,
                 description:
-                  "Plain-English description of what is actually visible in the photo (max 150 chars).",
-              },
-              rejection_reason: {
-                type: Type.STRING,
-                description:
-                  "If is_civic_issue is false, explain clearly in 1-2 sentences what was detected and why it was rejected. Empty string if genuine.",
+                  "Short plain-English summary of what is visible in the photo.",
               },
               category: {
                 type: Type.STRING,
+                nullable: true,
                 description:
-                  "Exactly one of: Pothole, Garbage, Streetlight, Other.",
+                  "One of: Pothole / Road Damage, Open Manhole, Garbage Blackspot, Broken Footpath, Waterlogging. Null if rejected.",
               },
-              severity: {
+              ticket_title: {
                 type: Type.STRING,
-                description: "One of: Critical, High, Medium, Low.",
-              },
-              asphalt_estimate_kg: {
-                type: Type.NUMBER,
+                nullable: true,
                 description:
-                  "Estimated asphalt/patching material in kg (integer >= 0). 0 if rejected or non-road issue.",
+                  "Formal 6-10 word title in professional English; null if rejected.",
               },
-              estimated_cost_inr: {
-                type: Type.NUMBER,
-                description:
-                  "Estimated civic repair cost in INR (integer >= 0). 0 if rejected.",
-              },
-              title: {
+              ticket_description: {
                 type: Type.STRING,
+                nullable: true,
                 description:
-                  "Concise English report title (5-110 chars) if genuine; empty string if rejected.",
+                  "Objective engineering description of the hazard translated from colloquial input; null if rejected.",
               },
-              summary: {
+              severity_score: {
+                type: Type.INTEGER,
+                nullable: true,
+                description:
+                  "Severity score from 1 to 10; null if rejected.",
+              },
+              sla_priority: {
                 type: Type.STRING,
+                nullable: true,
                 description:
-                  "Clear factual 1-2 sentence description of the civic issue (20-450 chars) if genuine; empty string if rejected.",
+                  "One of: P1 - Critical (<24h), P2 - High (<48h), P3 - Routine (<7d). Null if rejected.",
               },
-              surrounding_landmarks: {
+              engineering_estimates: {
+                type: Type.OBJECT,
+                nullable: true,
+                properties: {
+                  estimated_dimensions: {
+                    type: Type.STRING,
+                    description:
+                      "Estimated surface area (sq meters) and depth (cm), e.g., Approx 1.4m x 0.8m, depth ~9cm.",
+                  },
+                  required_material: {
+                    type: Type.STRING,
+                    description:
+                      "Estimated repair material (e.g., Approx 120-150 kg Cold-Mix Bituminous Asphalt).",
+                  },
+                  estimated_repair_cost_inr: {
+                    type: Type.NUMBER,
+                    description:
+                      "Standard Bengaluru market repair cost estimate in INR.",
+                  },
+                  labor_requirement: {
+                    type: Type.STRING,
+                    description:
+                      "Crew size, equipment, and estimated duration.",
+                  },
+                },
+                required: [
+                  "estimated_dimensions",
+                  "required_material",
+                  "estimated_repair_cost_inr",
+                  "labor_requirement",
+                ],
+              },
+              hazard_risk_summary: {
                 type: Type.STRING,
+                nullable: true,
                 description:
-                  "Visible road/corridor context if genuine; empty string if rejected.",
+                  "Concise commuter/pedestrian risk summary; null if rejected.",
               },
-              material_estimate: {
+              audit_disclaimer: {
                 type: Type.STRING,
-                description:
-                  "Realistic material and crew estimate if genuine; empty string if rejected.",
-              },
-              social_impact_score: {
-                type: Type.NUMBER,
-                description:
-                  "Calibrated 1-100 urgency score if genuine; 0 if rejected.",
-              },
-              economic_cost_of_delay: {
-                type: Type.STRING,
-                description:
-                  "Estimated 30-day safety/economic impact in INR if genuine; empty string if rejected.",
+                description: AUDIT_DISCLAIMER_TEXT,
               },
             },
             required: [
               "is_civic_issue",
-              "detected_subject",
               "rejection_reason",
+              "detected_subject",
               "category",
-              "severity",
-              "asphalt_estimate_kg",
-              "estimated_cost_inr",
-              "title",
-              "summary",
-              "surrounding_landmarks",
-              "material_estimate",
-              "social_impact_score",
-              "economic_cost_of_delay",
+              "ticket_title",
+              "ticket_description",
+              "severity_score",
+              "sla_priority",
+              "engineering_estimates",
+              "hazard_risk_summary",
+              "audit_disclaimer",
             ],
           },
         },
@@ -262,130 +279,73 @@ export async function POST(request: NextRequest) {
     );
 
     const rawText = extractJsonObject(response.text ?? "");
-    let parsed: {
-      is_civic_issue?: boolean;
-      detected_subject?: string;
-      rejection_reason?: string;
-      category?: string;
-      severity?: string;
-      asphalt_estimate_kg?: number;
-      estimated_cost_inr?: number;
-      title?: string;
-      summary?: string;
-      surrounding_landmarks?: string;
-      material_estimate?: string;
-      social_impact_score?: number;
-      economic_cost_of_delay?: string;
-    };
+    let parsed: Record<string, unknown>;
 
     try {
-      parsed = JSON.parse(rawText) as typeof parsed;
+      parsed = JSON.parse(rawText) as Record<string, unknown>;
     } catch {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Gemini AI returned a non-JSON audit response. Please retake the photo and try again.",
+            "CivicSnap AI returned a non-JSON audit response. Please retake the photo and try again.",
         },
-        { status: 200 }
+        { status: 502 }
       );
     }
 
-    const detectedSubject = (parsed.detected_subject ?? "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 180);
+    const detectedSubject =
+      typeof parsed.detected_subject === "string"
+        ? parsed.detected_subject.replace(/\s+/g, " ").trim().slice(0, 180)
+        : "";
 
-    if (parsed.is_civic_issue !== true) {
-      const rejectionReason =
-        (parsed.rejection_reason ?? "")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 300) ||
-        (detectedSubject
-          ? `Detected "${detectedSubject}" instead of outdoor public civic infrastructure. Please capture a real street pothole, waste pile, streetlight, or civic hazard.`
-          : "Detected a computer screen/indoor photo rather than outdoor public civic infrastructure. Please capture a real street pothole or civic issue.");
+    const protocolAudit = normalizeCivicAuditResponse(parsed, locality);
 
+    if (!protocolAudit.is_civic_issue) {
       return NextResponse.json(
         {
           success: true,
+          ...protocolAudit,
           audit: {
-            is_civic_issue: false,
+            ...protocolAudit,
             detected_subject: detectedSubject || "Non-civic / indoor image",
-            rejection_reason: rejectionReason,
           },
         },
         { status: 200 }
       );
     }
 
-    const normalizedCat = normalizeAiCategory(parsed.category);
-    const categoryDisplay = getPromptCategoryName(normalizedCat);
-    const socialImpactScore = clampSocialImpactScore(parsed.social_impact_score);
-    const severity = normalizeSeverity(parsed.severity, socialImpactScore);
-
-    const rawAsphalt = Math.round(Number(parsed.asphalt_estimate_kg) || 0);
-    const asphaltEstimateKg =
-      rawAsphalt > 0
-        ? Math.min(5000, rawAsphalt)
-        : normalizedCat === "pothole"
-          ? 120
-          : 0;
-
-    const rawCost = Math.round(Number(parsed.estimated_cost_inr) || 0);
-    const estimatedCostInr =
-      rawCost > 0
-        ? Math.min(500000, rawCost)
-        : normalizedCat === "pothole"
-          ? 3800
-          : 2500;
-
-    const title =
-      (parsed.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120) ||
-      `${categoryDisplay} Issue Reported in ${locality}`;
-    const summary =
-      (parsed.summary ?? "").replace(/\s+/g, " ").trim().slice(0, 600) ||
-      `Visible outdoor ${categoryDisplay.toLowerCase()} infrastructure issue captured in ${locality} requiring field inspection and repair.`;
-
-    const surroundingLandmarks =
-      (parsed.surrounding_landmarks ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 200) || `${locality} neighborhood street corridor`;
-
-    const materialEstimate =
-      (parsed.material_estimate ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 240) ||
-      (asphaltEstimateKg > 0
-        ? `~${asphaltEstimateKg} kg Hot-Mix Asphalt · Est. ₹${estimatedCostInr.toLocaleString("en-IN")} repair`
-        : `Field maintenance crew · Est. ₹${estimatedCostInr.toLocaleString("en-IN")} repair`);
-
-    const economicCostOfDelay =
-      (parsed.economic_cost_of_delay ?? "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 240) ||
-      `₹${(estimatedCostInr * 4).toLocaleString("en-IN")}+ est. 30-day commuter & vehicle wear impact`;
+    const normalizedCat = mapProtocolCategoryToIssueCategory(
+      protocolAudit.category
+    );
+    const severityScore10 = protocolAudit.severity_score ?? 7;
+    const socialImpactScore = Math.min(100, Math.max(10, severityScore10 * 10));
+    const est = protocolAudit.engineering_estimates!;
+    const asphaltEstimateKg = extractAsphaltKgFromMaterial(
+      est.required_material,
+      normalizedCat === "pothole" ? 120 : 0
+    );
+    const estimatedCostInr = est.estimated_repair_cost_inr;
 
     return NextResponse.json(
       {
         success: true,
+        ...protocolAudit,
         audit: {
-          is_civic_issue: true,
-          category: categoryDisplay,
+          ...protocolAudit,
           normalized_category: normalizedCat,
-          severity,
+          severity: severityScoreToLegacyLabel(severityScore10),
           asphalt_estimate_kg: asphaltEstimateKg,
           estimated_cost_inr: estimatedCostInr,
-          title,
-          summary,
-          detected_subject: detectedSubject || title,
-          surrounding_landmarks: surroundingLandmarks,
-          material_estimate: materialEstimate,
+          title: protocolAudit.ticket_title!,
+          summary: protocolAudit.ticket_description!,
+          detected_subject: detectedSubject || protocolAudit.ticket_title!,
+          surrounding_landmarks: `${locality}, Bengaluru — ${protocolAudit.sla_priority}`,
+          material_estimate: `${est.required_material} · ${est.labor_requirement}`,
           social_impact_score: socialImpactScore,
-          economic_cost_of_delay: economicCostOfDelay,
+          economic_cost_of_delay:
+            protocolAudit.hazard_risk_summary ??
+            `₹${(estimatedCostInr * 4).toLocaleString("en-IN")}+ est. 30-day commuter & vehicle wear impact`,
         },
       },
       { status: 200 }
@@ -394,43 +354,24 @@ export async function POST(request: NextRequest) {
     const safeError = sanitizeGeminiErrorMessage(err);
     console.error("[CivicSnap /api/analyze-issue] Error:", safeError);
 
-    // Graceful 429 / RESOURCE_EXHAUSTED handling requested for uninterrupted live judging
     if (isRateLimitError(safeError)) {
       return NextResponse.json(
         {
-          success: true,
-          cachedEstimate: true,
-          audit: {
-            is_civic_issue: true,
-            category: "Pothole",
-            normalized_category: "pothole",
-            severity: "High",
-            asphalt_estimate_kg: 120,
-            estimated_cost_inr: 4200,
-            title: "Road Damage Audit (Cached Estimate)",
-            summary:
-              "Estimated bituminous patch required for carriageway safety.",
-            detected_subject: "Road damage (cached engineering estimate)",
-            surrounding_landmarks: `${locality} neighborhood street corridor`,
-            material_estimate:
-              "~120 kg Hot-Mix Asphalt · Est. ₹4,200 repair (Cached Estimate)",
-            social_impact_score: 76,
-            economic_cost_of_delay:
-              "₹16,800+ est. 30-day commuter & vehicle wear impact",
-          },
+          success: false,
+          error:
+            "Gemini API quota or rate limit reached (429). Please wait a moment and tap CivicSnap AI Verify again, or select a billing-enabled key in Settings > Secrets.",
         },
-        { status: 200 }
+        { status: 429 }
       );
     }
 
-    // Friendly 503 / High Demand fallback message when all active models are temporarily busy
     if (isHighDemandOrUnavailableError(safeError)) {
       return NextResponse.json(
         {
           success: false,
           error: "AI traffic is momentarily high. Tap Verify again in 5 seconds.",
         },
-        { status: 200 }
+        { status: 503 }
       );
     }
 
@@ -439,7 +380,7 @@ export async function POST(request: NextRequest) {
         success: false,
         error: safeError,
       },
-      { status: 200 }
+      { status: 502 }
     );
   }
 }

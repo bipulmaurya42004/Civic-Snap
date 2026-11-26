@@ -225,7 +225,7 @@ export function LiveIssuesAdminPanel() {
 
     if (!isAuthorizedAdmin || !adminEmail) {
       setActionError(
-        "Authorized CivicSnap municipal admin sign-in is required to approve issues."
+        "Authorized CivicSnap Ward Auditor sign-in is required to approve issues."
       );
       return;
     }
@@ -276,7 +276,7 @@ export function LiveIssuesAdminPanel() {
 
     if (!isAuthorizedAdmin || !adminEmail) {
       setActionError(
-        "Authorized CivicSnap municipal admin sign-in is required to reject issues."
+        "Authorized CivicSnap Ward Auditor sign-in is required to reject issues."
       );
       return;
     }
@@ -332,7 +332,7 @@ export function LiveIssuesAdminPanel() {
           />
           <p>
             <strong className="font-semibold text-emerald-950">
-              Authenticated Municipal Admin ({adminEmail})
+              Authenticated Ward Auditor ({adminEmail})
             </strong>{" "}
             · Real-time Firestore audit stream active. Approving records{" "}
             <code className="rounded bg-emerald-100 px-1 py-0.5 font-mono text-xs text-emerald-900">
@@ -540,7 +540,7 @@ export function LiveIssuesAdminPanel() {
           </h2>
           <p className="mt-1.5 max-w-md text-xs leading-5 text-slate-600 sm:text-sm">
             {issues.length === 0
-              ? "Citizen reports submitted via /report stream here in real time for municipal approval (+50 pts) or spam rejection."
+              ? "Citizen reports submitted via /report stream here in real time for independent audit verification (+50 pts) or spam rejection."
               : "Clear the search bar or switch filter tabs to view all live Firestore reports."}
           </p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">

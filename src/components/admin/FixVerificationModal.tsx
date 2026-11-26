@@ -196,29 +196,34 @@ export function FixVerificationModal({
       });
 
       const aiData = (await aiRes.json()) as Partial<FixVerificationResponse> & {
+        fix_verified?: boolean;
+        match_confidence_score?: number;
         error?: string;
       };
 
-      if (!aiRes.ok || !aiData.verdict || !aiData.reason) {
+      if (!aiRes.ok || (!aiData.verdict && typeof aiData.fix_verified !== "boolean") || !aiData.reason) {
         throw new Error(
           aiData.error || "CivicSnap Vision AI verification could not complete."
         );
       }
 
-      // Step 3: Apply Verdict to Firestore (Verified + AI Confidence Score >= 90% -> Resolved +50 pts; Flagged -> Needs Review)
+      // Step 3: Apply Verdict to Firestore (Task 4: fix_verified && match_confidence_score >= 85% -> Resolved +50 pts; Flagged -> Needs Review)
       const aiConfidenceScore =
-        typeof aiData.aiConfidenceScore === "number"
-          ? Math.round(aiData.aiConfidenceScore)
-          : aiData.verdict === "Verified"
-            ? 94
-            : 45;
+        typeof aiData.match_confidence_score === "number"
+          ? Math.round(aiData.match_confidence_score)
+          : typeof aiData.aiConfidenceScore === "number"
+            ? Math.round(aiData.aiConfidenceScore)
+            : aiData.fix_verified || aiData.verdict === "Verified"
+              ? 90
+              : 45;
       const meetsConfidenceThreshold =
-        aiData.verdict === "Verified" && aiConfidenceScore >= 90;
+        (aiData.fix_verified === true || aiData.verdict === "Verified") &&
+        aiConfidenceScore >= 85;
 
       setStageMessage(
         meetsConfidenceThreshold
-          ? `AI Confidence Score ${aiConfidenceScore}% (≥90%)! Updating report to Resolved and crediting +${POINTS_PER_RESOLVED_REPORT} CivicPoints...`
-          : `AI Confidence Score ${aiConfidenceScore}% — flagging for Needs Review (0 pts awarded)...`
+          ? `Match Confidence ${aiConfidenceScore}% (≥85%)! Updating report to Resolved and crediting +${POINTS_PER_RESOLVED_REPORT} CivicPoints...`
+          : `Match Confidence ${aiConfidenceScore}% (<85%) — flagging for Needs Review (0 pts awarded)...`
       );
 
       const effectiveVerdict: "Verified" | "Flagged" = meetsConfidenceThreshold
@@ -257,7 +262,7 @@ export function FixVerificationModal({
       });
 
       setVerificationResult({
-        verdict: aiData.verdict,
+        verdict: effectiveVerdict,
         reason: aiData.reason,
         demoMode: Boolean(aiData.demoMode),
         notice: aiData.notice,
@@ -267,7 +272,7 @@ export function FixVerificationModal({
 
       onCompleted({
         reportId: report.id,
-        verdict: aiData.verdict,
+        verdict: effectiveVerdict,
         reason: aiData.reason,
         pointsDelta: modResult.pointsDelta,
         pointsAwarded: modResult.pointsAwarded,

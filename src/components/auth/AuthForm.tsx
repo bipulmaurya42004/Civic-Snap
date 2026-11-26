@@ -4,16 +4,27 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Loader2,
   LogIn,
   LogOut,
+  Settings,
+  Shield,
   ShieldCheck,
+  Sprout,
+  User,
   UserPlus,
 } from "lucide-react";
 import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
+import { auth } from "@/lib/firebase";
 import { buildAuthHref, validateAuthInput } from "@/lib/civic-logic";
+import {
+  getUserRoleBadge,
+  resolvePostSignInOutcome,
+  type AuthPortalRole,
+} from "@/lib/admin-issues-logic";
 
 interface AuthFormProps {
   mode: "login" | "signup";
@@ -45,6 +56,8 @@ export function AuthForm({
   } = useFirebaseAuth();
 
   const isSignup = mode === "signup";
+  const [portalRole, setPortalRole] = useState<AuthPortalRole>("citizen");
+  const [roleNotice, setRoleNotice] = useState<string | null>(null);
   const [alias, setAlias] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -54,6 +67,7 @@ export function AuthForm({
   const handleGoogleAuth = async () => {
     clearError();
     setValidationError(null);
+    setRoleNotice(null);
     const ok = await signInWithGoogle(
       isSignup
         ? {
@@ -63,7 +77,19 @@ export function AuthForm({
         : undefined
     );
     if (ok && !stayInPlaceOnAuth) {
-      router.push(redirectPath);
+      const signedInEmail = auth?.currentUser?.email ?? user?.email ?? null;
+      const outcome = resolvePostSignInOutcome({
+        portalRole: isSignup ? "citizen" : portalRole,
+        userEmail: signedInEmail,
+        defaultRedirect: redirectPath,
+      });
+      if (outcome.notice) {
+        setRoleNotice(outcome.notice);
+        return;
+      }
+      if (outcome.redirectTo) {
+        router.push(outcome.redirectTo);
+      }
     }
   };
 
@@ -102,23 +128,56 @@ export function AuthForm({
 
   // Already signed in view on standalone /login or /signup routes
   if (user && !stayInPlaceOnAuth) {
+    const badge = getUserRoleBadge(user.email);
     return (
       <div className="rounded-[20px] border border-emerald-200 bg-white p-6 sm:p-8">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
             <CheckCircle2 size={20} aria-hidden="true" />
           </div>
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">
-              You are signed in as {displayAlias}
-            </h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-900">
+                You are signed in as {displayAlias}
+              </h2>
+              {badge.isAdmin ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/50 bg-slate-900 px-2 py-0.5 text-[11px] font-bold text-amber-300">
+                  <ShieldCheck size={12} aria-hidden="true" />
+                  <span>Ward Admin</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                  <Sprout size={12} aria-hidden="true" />
+                  <span>Citizen</span>
+                </span>
+              )}
+            </div>
             {user.email && (
               <p className="mt-0.5 text-sm text-slate-600">{user.email}</p>
             )}
           </div>
         </div>
 
+        {roleNotice && (
+          <div
+            role="status"
+            className="mt-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-950"
+          >
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-700" aria-hidden="true" />
+            <span>{roleNotice}</span>
+          </div>
+        )}
+
         <div className="mt-6 flex flex-wrap items-center gap-3">
+          {badge.isAdmin && (
+            <Link
+              href="/admin"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+            >
+              <Settings size={15} aria-hidden="true" />
+              <span>Admin Portal</span>
+            </Link>
+          )}
           <Link
             href={redirectPath}
             className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8]"
@@ -145,23 +204,103 @@ export function AuthForm({
     isSignup ? "login" : "signup",
     redirectPath
   );
+  const isStaffTab = !isSignup && portalRole === "staff";
 
   return (
     <div className="rounded-[20px] border border-slate-200 bg-white p-6 sm:p-8">
+      {/* Role Selector Tabs on Login */}
+      {!isSignup && !stayInPlaceOnAuth && (
+        <div className="mb-5">
+          <div
+            role="tablist"
+            aria-label="Select portal role"
+            className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-100/90 p-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isStaffTab}
+              onClick={() => {
+                setPortalRole("citizen");
+                setRoleNotice(null);
+              }}
+              className={`flex cursor-pointer flex-col items-start rounded-lg px-2.5 py-2 text-left transition-all ${
+                !isStaffTab
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold">
+                <User size={13} className={!isStaffTab ? "text-blue-600" : "text-slate-400"} aria-hidden="true" />
+                <span>Citizen Portal</span>
+              </span>
+              <span className="mt-0.5 text-[10px] leading-3.5 text-slate-500">
+                Reports, Live Map, Vanguard Standings
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isStaffTab}
+              onClick={() => {
+                setPortalRole("staff");
+                setRoleNotice(null);
+              }}
+              className={`flex cursor-pointer flex-col items-start rounded-lg px-2.5 py-2 text-left transition-all ${
+                isStaffTab
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold">
+                <Shield size={13} className={isStaffTab ? "text-amber-300" : "text-slate-400"} aria-hidden="true" />
+                <span>Civic Verifier &amp; Admin</span>
+              </span>
+              <span className={`mt-0.5 text-[10px] leading-3.5 ${isStaffTab ? "text-slate-300" : "text-slate-500"}`}>
+                Review Queue, Repair Verification, Independent Audit
+              </span>
+            </button>
+          </div>
+          <p className="mt-2 rounded-xl border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-[11px] font-medium leading-4 text-amber-900">
+            🛡️ Independent Audit Tier — for Ward Leads, NGO Verifiers &amp; Hackathon Evaluators. Whitelisted emails only.
+          </p>
+        </div>
+      )}
+
       {/* Primary Google Sign-In / Sign-Up button */}
       <button
         type="button"
         onClick={() => void handleGoogleAuth()}
         disabled={busy}
-        className="inline-flex min-h-[46px] w-full items-center justify-center gap-2.5 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className={`inline-flex min-h-[46px] w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+          isStaffTab
+            ? "bg-[#1E293B] hover:bg-[#0F172A]"
+            : "bg-[#2563EB] hover:bg-[#1D4ED8]"
+        }`}
       >
         {busy ? (
-          <Loader2 size={17} className="animate-spin text-[#2563EB]" aria-hidden="true" />
+          <Loader2
+            size={17}
+            className="animate-spin text-white"
+            aria-hidden="true"
+          />
         ) : (
-          <ShieldCheck size={17} className="text-[#2563EB]" aria-hidden="true" />
+          <span
+            aria-hidden="true"
+            className={`inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-extrabold ${
+              isStaffTab ? "text-[#1E293B]" : "text-[#2563EB]"
+            }`}
+          >
+            G
+          </span>
         )}
         <span>
-          {isSignup ? "Sign up with Google" : "Continue with Google"}
+          {isSignup
+            ? "Sign up with Google"
+            : isStaffTab
+              ? "Sign in with Google (Ward Auditor)"
+              : "Sign in with Google (Citizen)"}
         </span>
       </button>
 

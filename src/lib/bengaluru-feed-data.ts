@@ -111,7 +111,7 @@ export const BENGALURU_FEED_ISSUES: readonly BengaluruFeedIssue[] = [
     category: "waste",
     status: "pending",
     summary:
-      "Uncollected municipal waste bags and wet market cartons spilling across half the footpath outside the Sector 1 bus bay.",
+      "Uncollected street waste bags and wet market cartons spilling across half the footpath outside the Sector 1 bus bay.",
     imageUrl: "/demo/waste.jpg",
     imageAlt: "Overflowing public waste collection bin on 27th Main HSR Layout",
     lat: 12.9121,

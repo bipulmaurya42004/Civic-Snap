@@ -615,7 +615,7 @@ export function HomeLandingClient() {
                       href="/admin"
                       className="inline-flex items-center gap-1 font-semibold text-blue-600 transition-colors hover:text-blue-700"
                     >
-                      <span>Municipal Admin Console</span>
+                      <span>Ward Auditor Console</span>
                       <ArrowRight size={13} aria-hidden="true" />
                     </Link>
                   </div>

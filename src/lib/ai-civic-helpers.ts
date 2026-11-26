@@ -554,18 +554,18 @@ export function generateDemoPhotoAudit(
   if (/\b(waste|garbage|trash|bin|kachra|dump)\b/.test(hint)) {
     return {
       isGenuineCivicIssue: true,
-      detectedSubject: "Overflowing roadside municipal waste pile next to sidewalk",
+      detectedSubject: "Overflowing roadside civic waste pile next to sidewalk",
       rejectionReason: "",
       confidence: 92,
       title: `Overflowing roadside waste accumulation near ${area}`.slice(0, 120),
       category: "waste",
       categoryDisplay: "Garbage",
       description:
-        `Accumulated municipal waste and overflowing refuse visible along the street shoulder near ${area}, obstructing pedestrian movement and creating a sanitation hazard.`,
+        `Accumulated street waste and overflowing refuse visible along the street shoulder near ${area}, obstructing pedestrian movement and creating a sanitation hazard.`,
       surroundingLandmarks:
         "High-traffic pedestrian sidewalk near local shops and residential frontage",
       materialEstimate:
-        "1 municipal compactor trip, ~20L disinfectant spray, 2 sanitation workers (2 labor hours)",
+        "1 waste compactor trip, ~20L disinfectant spray, 2 sanitation workers (2 labor hours)",
       socialImpactScore: 76,
       economicCostOfDelay:
         "Est. ₹12,000–₹24,000 over 30 days in localized health/sanitation impact and footfall loss to nearby shops",
@@ -575,7 +575,7 @@ export function generateDemoPhotoAudit(
   if (/\b(light|lamp|pole|dark|street)\b/.test(hint)) {
     return {
       isGenuineCivicIssue: true,
-      detectedSubject: "Unlit municipal streetlight pole along evening street corridor",
+      detectedSubject: "Unlit public streetlight pole along evening street corridor",
       rejectionReason: "",
       confidence: 90,
       title: `Non-functional streetlight fixture along ${area}`.slice(0, 120),

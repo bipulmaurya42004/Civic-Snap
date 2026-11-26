@@ -51,6 +51,11 @@ export interface AdminIssuesKpis {
   rejected: number;
 }
 
+export type AuthPortalRole = "citizen" | "staff";
+
+export const NON_ADMIN_STAFF_SIGNIN_NOTICE =
+  "Signed in as Citizen. To access Ward Auditor controls, sign in with a whitelisted Civic Verifier email.";
+
 /**
  * Strictly enforces authenticated email authorization against
  * `process.env.NEXT_PUBLIC_ADMIN_EMAILS`. No URL parameter or guest bypasses exist.
@@ -66,6 +71,66 @@ export function canAccessAdminDashboard(params: {
     params.userEmail,
     params.envAdminEmailsOverride
   );
+}
+
+/**
+ * Resolves the navbar/profile RBAC role badge for a signed-in user.
+ */
+export function getUserRoleBadge(
+  userEmail?: string | null,
+  envAdminEmailsOverride?: string | null
+): {
+  isAdmin: boolean;
+  label: "Ward Admin" | "Citizen";
+} {
+  const isAdmin = canAccessAdminDashboard({
+    userEmail,
+    envAdminEmailsOverride,
+  });
+  return isAdmin
+    ? { isAdmin: true, label: "Ward Admin" }
+    : { isAdmin: false, label: "Citizen" };
+}
+
+/**
+ * Determines post-Google-Sign-In redirect and RBAC notice based on whether the
+ * user signed in via the Citizen Portal tab or Civic Verifier & Admin tab.
+ */
+export function resolvePostSignInOutcome(params: {
+  portalRole: AuthPortalRole;
+  userEmail?: string | null;
+  defaultRedirect?: string | null;
+  envAdminEmailsOverride?: string | null;
+}): {
+  redirectTo: string | null;
+  notice: string | null;
+  isAdmin: boolean;
+} {
+  const isAdmin = canAccessAdminDashboard({
+    userEmail: params.userEmail,
+    envAdminEmailsOverride: params.envAdminEmailsOverride,
+  });
+
+  if (params.portalRole === "staff") {
+    if (isAdmin) {
+      return {
+        redirectTo: "/admin",
+        notice: null,
+        isAdmin: true,
+      };
+    }
+    return {
+      redirectTo: "/dashboard",
+      notice: NON_ADMIN_STAFF_SIGNIN_NOTICE,
+      isAdmin: false,
+    };
+  }
+
+  return {
+    redirectTo: params.defaultRedirect ?? null,
+    notice: null,
+    isAdmin,
+  };
 }
 
 /**

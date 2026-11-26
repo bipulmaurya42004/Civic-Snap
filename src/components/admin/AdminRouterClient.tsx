@@ -55,7 +55,7 @@ export function AdminRouterClient() {
     return (
       <section
         data-testid="admin-access-denied"
-        aria-label="Municipal Admin Access Restricted"
+        aria-label="Ward Auditor Access Restricted"
         className="mt-6 rounded-2xl border border-rose-200 bg-white p-6 shadow-xs sm:p-8"
       >
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
@@ -67,10 +67,10 @@ export function AdminRouterClient() {
               Access Denied · Authenticated Whitelist Only
             </p>
             <h2 className="mt-1 font-[var(--font-heading)] text-xl font-bold text-slate-900 sm:text-2xl">
-              Municipal Admin Access Restricted
+              Ward Auditor Access Restricted
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Sign in with an authorized CivicSnap admin email.
+              Sign in with an authorized CivicSnap Ward Auditor email.
             </p>
 
             {user?.email && (

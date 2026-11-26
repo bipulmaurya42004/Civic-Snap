@@ -16,9 +16,11 @@ import {
   LogOut,
   MapPin,
   MoreVertical,
+  Settings,
   Shield,
   ShieldCheck,
   Sparkles,
+  Sprout,
   Trophy,
   User,
   X,
@@ -26,6 +28,7 @@ import {
 import { CivicSnapLogo } from "@/components/brand/CivicSnapLogo";
 import { useFirebaseAuth } from "@/components/providers/FirebaseAuthProvider";
 import { useAuthModal } from "@/components/AuthModal";
+import { getUserRoleBadge } from "@/lib/admin-issues-logic";
 
 const PRIMARY_NAV_ITEMS = [
   {
@@ -48,9 +51,9 @@ const PRIMARY_NAV_ITEMS = [
   },
   {
     label: "Dashboard",
-    href: "/admin",
-    matchPrefixes: ["/admin", "/dashboard"],
-    isStaff: true,
+    href: "/dashboard",
+    matchPrefixes: ["/dashboard"],
+    isStaff: false,
   },
 ] as const;
 
@@ -75,6 +78,9 @@ export function SiteHeader() {
   const { user, displayAlias, busy, signOutUser } = useFirebaseAuth();
   const { openAuthModal } = useAuthModal();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const roleBadge = user ? getUserRoleBadge(user.email) : null;
+  const isWardAdmin = Boolean(roleBadge?.isAdmin);
 
   const handleReportClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (!user) {
@@ -172,25 +178,58 @@ export function SiteHeader() {
             })}
           </nav>
 
-          {/* Zone 3: Right Actions (Sign In, My Profile, Report an Issue) + Three-Dots Drawer */}
+          {/* Zone 3: Right Actions (Role Badge, Admin Portal, Profile, Report an Issue) + Three-Dots Drawer */}
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {user ? (
               <>
+                {isWardAdmin && (
+                  <Link
+                    href="/admin"
+                    data-testid="navbar-admin-portal-link"
+                    className={`hidden md:inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                      pathname === "/admin" || pathname.startsWith("/admin/")
+                        ? "border-slate-900 bg-slate-900 text-white shadow-xs"
+                        : "border-blue-200 bg-blue-50 text-blue-800 hover:border-blue-300 hover:bg-blue-100"
+                    }`}
+                  >
+                    <Settings size={14} aria-hidden="true" />
+                    <span>Admin Portal</span>
+                  </Link>
+                )}
+
                 <Link
                   href="/profile"
-                  className="hidden lg:inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100 whitespace-nowrap shrink-0 xl:text-sm"
+                  data-testid="navbar-user-profile-link"
+                  className="hidden lg:inline-flex min-h-[40px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-50 whitespace-nowrap shrink-0"
                 >
-                  <User size={15} aria-hidden="true" className="text-blue-600" />
-                  <span className="max-w-[96px] truncate">
+                  <User size={14} aria-hidden="true" className="shrink-0 text-blue-600" />
+                  <span className="max-w-[92px] truncate">
                     {displayAlias || "My Profile"}
                   </span>
+                  {roleBadge?.isAdmin ? (
+                    <span
+                      data-testid="navbar-role-badge"
+                      className="inline-flex items-center gap-1 rounded-md border border-amber-400/50 bg-slate-900 px-2 py-0.5 text-[10px] font-bold tracking-wide text-amber-300 whitespace-nowrap"
+                    >
+                      <ShieldCheck size={11} aria-hidden="true" />
+                      <span>Ward Admin</span>
+                    </span>
+                  ) : (
+                    <span
+                      data-testid="navbar-role-badge"
+                      className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 whitespace-nowrap"
+                    >
+                      <Sprout size={11} aria-hidden="true" />
+                      <span>Citizen</span>
+                    </span>
+                  )}
                 </Link>
                 <button
                   type="button"
                   onClick={() => void signOutUser()}
                   disabled={busy}
                   aria-label="Sign out"
-                  className="hidden xl:inline-flex min-h-[40px] cursor-pointer items-center gap-1 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0"
+                  className="hidden xl:inline-flex min-h-[40px] cursor-pointer items-center gap-1 rounded-xl px-2 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 whitespace-nowrap shrink-0"
                 >
                   <LogOut size={14} aria-hidden="true" />
                   <span>Sign Out</span>
@@ -422,6 +461,49 @@ export function SiteHeader() {
                     Account &amp; Legal
                   </p>
                   <ul className="space-y-1">
+                    {user && (
+                      <li className="mb-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold text-slate-900">
+                            {displayAlias}
+                          </span>
+                          {isWardAdmin ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-400/50 bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                              <ShieldCheck size={11} aria-hidden="true" />
+                              <span>Ward Admin</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                              <Sprout size={11} aria-hidden="true" />
+                              <span>Citizen</span>
+                            </span>
+                          )}
+                        </div>
+                        {user.email && (
+                          <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500">
+                            {user.email}
+                          </p>
+                        )}
+                      </li>
+                    )}
+
+                    {isWardAdmin && (
+                      <li>
+                        <Link
+                          href="/admin"
+                          onClick={() => setDrawerOpen(false)}
+                          className="flex min-h-[42px] items-center gap-3 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                        >
+                          <Settings
+                            size={16}
+                            aria-hidden="true"
+                            className="shrink-0 text-amber-300"
+                          />
+                          <span>Admin Portal</span>
+                        </Link>
+                      </li>
+                    )}
+
                     <li>
                       <Link
                         href="/profile"
