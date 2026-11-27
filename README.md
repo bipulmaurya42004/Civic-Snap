@@ -1,81 +1,145 @@
-# CivicSnap AI — Independent Bengaluru Public Infrastructure Ledger & AI Audit Protocol
-
-> **Independent Citizen-Driven Open Civic Tech Prototype** — Live-camera street reporting, Hinglish voice-to-report AI, anti-spam verification, Before-vs-After Gemini Vision audits, and SHA-256 tamper-evident Civic Merit Certificates for Bengaluru (2026).
-
----
-
-## Disclaimer
-
-CivicSnap is an independent citizen-driven open civic tech prototype. It is not affiliated with, nor an official agency of, the BBMP, BDA, or the Government of Karnataka.
+# CivicSnap AI — Independent Bengaluru Civic Audit Protocol
+> **Snap. Audit. Fix.** — An independent, AI-driven civic accountability protocol transforming urban street hazard reporting into actionable civil engineering audits.
 
 ---
 
-## Key Features
-
-### 1. Anti-Spam & Fraud-Prevention Verification Layer
-- **Live Camera Only (`/report`)**: Uses `<input type="file" accept="image/*" capture="environment">` with gallery selection disabled to deter reused screenshots and stock photos.
-- **Private EXIF Validation & Stripping (`exifr`)**: Reads EXIF GPS and timestamp privately in-browser, automatically flagging reports as **Needs Review** if EXIF GPS differs by > 500m from reported GPS or if the photo timestamp is older than 24 hours. Raw EXIF data is never displayed publicly and is completely stripped via `<canvas>` re-encoding (< 200KB optimization).
-- **Perceptual Image Hashing (`imageHash`)**: Computes a 64-bit average perceptual hash client-side and rejects duplicate or near-duplicate submissions (`"This image was already submitted."`).
-- **Daily Rate Limits & 50m / 30-Day Cooldown**: Enforces a maximum of 5 reports per user per day and prevents earning points twice within 50m of an existing report inside a 30-day window.
-- **Verification-Only Points**: Zero points are awarded on submission or acceptance. `+50 Civic Merit Points` are credited strictly when a report is marked **Verified & Resolved** with **AI Confidence Score ≥ 90%** AND **Admin approval**.
-- **Admin Flagged Reports Queue (`/admin`)**: Dedicated **Flagged Reports** tab listing EXIF/fraud flag reasons with **Approve**, **Reject**, and Before-vs-After AI Verification actions.
-
-### 2. Multimodal AI Audit & Hinglish Voice Intake
-- **Hinglish Voice-to-Report**: Converts natural Hindi/Hinglish spoken complaints into structured English titles, categories, and descriptions via server-side Gemini API routes (`/api/gemini`).
-- **Material & Priority Audit**: Estimates repair materials (asphalt kg, LED fixtures, labor hours) and automatically tags **Hospital / School High Priority Zones**.
-- **Before-vs-After AI Confidence Score**: Compares original citizen hazard photos against repair proof photos and outputs a calibrated **AI Confidence Score (0–100%)**.
-
-### 3. SHA-256 Civic Merit Certificates & Bengaluru Civic Vanguard 2026
-- **Certificate of Civic Merit — Issued by CivicSnap (Independent Prototype)**: Automatically unlocked every 5 verified fixes with format `CS-BLR-2026-<UID>`, scannable QR code, public `/verify/[id]` portal, and deterministic **SHA-256 audit hash** (`Independent Open Civic Audit Record`).
-- **Bengaluru Civic Vanguard Citation (2026)**: Annual Top 5 shortlist reviewed by an independent community review panel, alongside a **CivicTech Community Micro-Grant (Planned – aspirational, not funded in this prototype)**.
-
-### 4. Hardened Firestore Security Rules
-- Enforces zero client forgery on `users/{userId}`, `reports/{reportId}`, `public_reports/{reportId}`, and `issues/{issueId}` — preventing clients from escalating roles, forging points, mutating `status`/`aiScore`/`verifiedAt`, or deleting audit logs.
+## 🔗 Quick Deliverables & Links
+- **Live Application:** [civicsnap-ai.vercel.app](https://civicsnap-ai.vercel.app)
+- **Explainer Video (2–3 Min Full Demo):** [Watch Explainer Video on YouTube](https://youtu.be/YOUR_EXPLAINER_VIDEO_LINK)
+- **Launch Film (60–90s Reel):** [Watch Launch Film on YouTube](https://youtu.be/YOUR_PROMO_VIDEO_LINK)
+- **Social Media:**
+  - Instagram: [@civicsnap_ai](https://instagram.com/civicsnap_ai)
+  - X (Twitter): [@civicsnap_ai](https://x.com/civicsnap_ai)
+- **Official Event Hashtags:** `#TutedudeBuildathon` `#BuildForMyCity`
 
 ---
 
-## Tech Stack
-
-- **Framework**: Next.js (App Router), React, TypeScript
-- **Styling & Motion**: Tailwind CSS v4 (Clean Light SaaS palette), `motion/react`, `lucide-react`
-- **AI & Vision**: `@google/genai` (server-side `/api/gemini` route only)
-- **Backend & Auth**: Firebase Authentication (Google Sign-In) + Cloud Firestore + Firebase Storage
-- **Image Forensics**: `exifr` (EXIF extraction) + HTML5 Canvas EXIF stripping & < 200KB compression + 64-bit perceptual hash
+## ⚠️ Compliance & Independent Protocol Disclaimer
+CivicSnap AI is an **independent, open-source civic watchdog protocol**. It does **NOT** claim official affiliation with, nor does it impersonate, any municipal authority, urban local body, or government department (including BBMP, BDA, or Government of Karnataka). It does not issue official municipal contracts or legal penalties. All material estimates, repair costs, and dimensions are algorithmic approximations generated by Google Gemini Multimodal AI for citizen transparency and community-led audit purposes.
 
 ---
 
-## Judge Mode Instructions
+## 1. Problem Statement & Research Validation
 
-Append `?mode=judge` to the Admin Audit Dashboard URL to open the interactive read-only **Audit Verification Preview** with pre-loaded Before-vs-After Bengaluru repair comparisons and AI Confidence Score breakdowns:
+### The Real-World Urban Challenge
+Bengaluru is India's tech capital, yet its roads and public infrastructure face chronic breakdown. Citizens encounter dangerous potholes, waterlogged intersections, open drains, and garbage blackspots daily. 
 
+### Why Existing Solutions Fail
+1. **Friction-Heavy Passive Sinks:** Existing portals (e.g., BBMP Sahaya) act as passive ticket registers. They require long multi-step forms, complex drop-down selections, and formal English essays. Commuters on the road simply do not have the time to type.
+2. **The "Closed on Paper" Fraud:** Citizens report an issue, and within 48 hours it gets marked "Resolved" by contractors on paper without any asphalt touching the road. There is zero visual verification.
+3. **No Financial or Material Transparency:** Citizens have no visibility into repair logistics — e.g., how much asphalt is required, realistic market repair costs, or SLA priority.
+4. **Spam & False Reporting:** Municipal review queues are frequently clogged with duplicate reports, memes, indoor screenshots, and fake claims.
+
+### How CivicSnap Solves This (Going Beyond Reporting)
+CivicSnap AI transforms passive complaining into an **Automated Civil Engineering Audit Engine**:
+- **Zero-Typing Hinglish Voice Input:** A citizen snaps a photo and speaks colloquial Hinglish/slang. The AI translates and structures a municipal-grade engineering ticket in seconds.
+- **Multimodal Bill of Quantities (BOQ):** Gemini 1.5 Flash visual models estimate damage surface area, depth, required cold-mix asphalt (~120–150 kg), and market repair cost in INR.
+- **Computer-Vision Spam Defense:** Algorithms screen out indoor photos, memes, selfies, and laptop screens before a ticket is created.
+- **Before-vs-After Repair Auditing:** Fixes require an "After" photo matched by AI (≥85% visual similarity) or community auditor verification before points are awarded.
+
+---
+
+## 2. Technical Architecture & Tech Stack
+
+```text
+[Citizen Web App / PWA] ──► [Live Camera Capture & Hinglish Audio]
+                                      │
+                                      ▼
+             [Next.js 14 App Router Serverless API Routes]
+                                      │
+                                      ▼
+            [Google Gemini 1.5 Flash Multimodal Vision API]
+            ├── Anti-Spam / Indoor Detection Filter
+            ├── Hinglish-to-Civic Engineering Parser
+            └── BOQ Generator (Asphalt kg, INR Cost, SLA Tier)
+                                      │
+                                      ▼
+                      [Firebase Cloud Firestore]
+            ├── Strict Security Rules (Anti-Client Point Tampering)
+            ├── Dual-Role RBAC (Citizen vs Civic Verifier)
+            └── Dynamic Top-5 Ward Vanguard Leaderboards
+                                      │
+                                      ▼
+           [Cryptographic SHA-256 Tamper-Evident Merit Citations]
 ```
-/admin?mode=judge
-```
 
-You can also inspect the public SHA-256 certificate verification portal directly with the demo credential:
-
-```
-/verify/CS-BLR-2026-DEMO
-```
+### Technology Breakdown
+- **Frontend Framework:** Next.js 14 (App Router), React, TypeScript
+- **Styling & UI:** Tailwind CSS (Clean Light SaaS Theme: Slate-50 background, Crisp White cards, Blue `#2563EB` primary accents)
+- **AI & Multimodal Vision:** Google Gemini 1.5 Flash (via Google AI Studio REST API)
+- **Database & Authentication:** Firebase Cloud Firestore, Firebase Authentication
+- **Security & Privacy:** Hardened Firestore security rules, client-side EXIF GPS stripping
+- **Deployment:** Vercel Global Edge Network
 
 ---
 
-## Running Locally
+## 3. Key Implementation Decisions
+1. **Server-Enforced Points Minting:** Users never receive points (+50) merely for filing a report. Points are exclusively awarded when an issue achieves verified fix status (≥85% AI visual match or authorized community auditor sign-off).
+2. **AI Anti-Spam Gatekeeper:** If Gemini flags an image with `is_civic_issue: false`, the submission is rejected immediately, keeping public queues clean.
+3. **Dynamic Ward Leaderboards:** Ranks and Top-5 cutoff thresholds are queried live from Firestore rather than using hardcoded fake arrays. Authentic new users start at 0 points.
+4. **Independent Dual Roles:** Clear separation between Citizen contributors and Ward Community Auditors without claiming government authority.
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Copy `.env.example` to `.env.local` and configure `GEMINI_API_KEY` (server-only) and optional `NEXT_PUBLIC_ADMIN_EMAILS`.
-3. Run the unit test suite:
-   ```bash
-   npx tsx --test src/lib/civic-logic.test.ts
-   ```
-4. Start the development server on port 3000:
-   ```bash
-   npm run dev
-   ```
-5. Build for production:
-   ```bash
-   npm run build
-   ```
+---
+
+## 4. Brand Identity & Visual Kit
+- **Product Name:** CivicSnap AI
+- **Tagline:** Snap. Audit. Fix.
+- **Color Palette:**
+  - Primary Civic Blue: `#2563EB`
+  - Clean Background: `#F8FAFC` (Slate-50)
+  - Card Surface: `#FFFFFF`
+  - Verification Green: `#10B981` (Emerald)
+  - Critical Severity Red: `#EF4444` (Crimson)
+- **Typography:** Inter, system sans-serif
+
+---
+
+## 5. Limitations & Future Roadmap
+- **Current Limitations:**
+  - Pothole depth estimation via 2D photos is an algorithmic approximation dependent on ambient lighting and camera angle.
+  - Offline reporting in zero-network pockets currently requires internet reconnect for AI inference.
+- **Future Improvements:**
+  - Localized offline-first Service Worker queue for seamless sync upon network reconnect.
+  - Integration with Bengaluru Open Data repositories for automated ward budget correlation.
+  - Community-funded civic repair bounties backed by Resident Welfare Associations (RWAs).
+
+---
+
+## 6. How to Run Locally
+
+```bash
+# Clone the repository
+git clone https://github.com/bipulmaurya42004/Civic-Snap.git
+
+# Navigate to project directory
+cd Civic-Snap
+
+# Install dependencies
+bun install
+
+# Set up environment variables (.env.local)
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+GEMINI_API_KEY=your_google_ai_studio_api_key
+NEXT_PUBLIC_ADMIN_EMAILS=your_whitelisted_email@gmail.com
+
+# Start development server
+bun dev
+```---
+
+### 🔑 Judge / Evaluator Demo Access
+To test the complete two-sided audit workflow (Citizen vs Verifier), use the following test credentials:
+
+- **Portal:** [civicsnap-ai.vercel.app](https://civicsnap-ai.vercel.app)
+- **Role to Select:** `Civic Verifier & Admin`
+- **Email:** `aapka-admin-email@gmail.com`
+- **Password:** `aapka-password-yahan-likho`
+- **What to test:** Review incoming citizen hazard reports, verify AI repair scores, approve (+50 CivicPoints), or reject invalid reports.
+
+*(Note: Regular sign-ins automatically route to the Citizen Dashboard).*
+
+---
