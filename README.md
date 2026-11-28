@@ -5,11 +5,12 @@
 
 ## 🔗 Quick Deliverables & Links
 - **Live Application:** [civicsnap-ai.vercel.app](https://civicsnap-ai.vercel.app)
-- **Explainer Video (2–3 Min Full Demo):** [Watch Explainer Video on YouTube](https://youtu.be/YOUR_EXPLAINER_VIDEO_LINK)
-- **Launch Film (60–90s Reel):** [Watch Launch Film on YouTube](https://youtu.be/YOUR_PROMO_VIDEO_LINK)
+- **Explainer Video (2–3 Min Full Demo):(https://drive.google.com/file/d/1hy2uswnutyHkjnTHL3a_JUfPDTjZHfTc/view?usp=drive_link)
+- **Launch Film (60–90s Reel):(https://drive.google.com/file/d/1dfh8AJMwZJSWoePm5xFA0v9T5IA4pw4B/view?usp=sharing)
 - **Social Media:**
-  - Instagram: [@civicsnap_ai](https://instagram.com/civicsnap_ai)
-  - X (Twitter): [@civicsnap_ai](https://x.com/civicsnap_ai)
+  - Instagram:  https://www.instagram.com/civic.snap?evlk=ZjEyY3VpMHplOTd3
+  - Mosed liked reel - https://www.instagram.com/reel/DgIBUrpvOio/?jplx=dW5yenRuOWc1aG9p
+  - X (Twitter): https://x.com/CivicSnap
 - **Official Event Hashtags:** `#TutedudeBuildathon` `#BuildForMyCity`
 
 ---
@@ -136,8 +137,8 @@ To test the complete two-sided audit workflow (Citizen vs Verifier), use the fol
 
 - **Portal:** [civicsnap-ai.vercel.app](https://civicsnap-ai.vercel.app)
 - **Role to Select:** `Civic Verifier & Admin`
-- **Email:** `aapka-admin-email@gmail.com`
-- **Password:** `aapka-password-yahan-likho`
+- **Email:**vedmindset@gmail.com`
+- **Password:** adminlogin@1`
 - **What to test:** Review incoming citizen hazard reports, verify AI repair scores, approve (+50 CivicPoints), or reject invalid reports.
 
 *(Note: Regular sign-ins automatically route to the Citizen Dashboard).*
